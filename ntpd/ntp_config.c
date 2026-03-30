@@ -4367,6 +4367,10 @@ peerflag_bits(
 		case T_Noselect:
 			peerflags |= FLAG_NOSELECT;
 			break;
+			
+		case T_Nts:
+			peerflags |= FLAG_NTS;
+			break;	
 
 		case T_Preempt:
 			peerflags |= FLAG_PREEMPT;

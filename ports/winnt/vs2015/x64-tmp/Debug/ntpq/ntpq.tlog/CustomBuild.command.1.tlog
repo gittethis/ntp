@@ -1,0 +1,2 @@
+^D:\NTP\PORTS\WINNT\VS2015\NTPQ\SCM-REV
+call ..\..\scripts\mkver.bat -S scm-rev -P ntpq

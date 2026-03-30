@@ -31,6 +31,6 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <CustomBuild Include="..\..\..\..\packageinfo.sh" />
+    <CustomBuild Include="scm-rev" />
   </ItemGroup>
 </Project>

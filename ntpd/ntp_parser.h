@@ -488,6 +488,7 @@ extern int yydebug;
 #define T_Jitter 468
 #define T_Prop_Delay 469
 #define T_Proc_Delay 470
+#define T_Nts 471
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED

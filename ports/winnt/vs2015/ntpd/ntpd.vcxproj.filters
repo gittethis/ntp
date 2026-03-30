@@ -561,7 +561,6 @@
     <CustomBuild Include="..\..\..\..\ntpd\ntp_parser.h">
       <Filter>Header Files</Filter>
     </CustomBuild>
-    <CustomBuild Include="..\..\..\..\.bk\SCCS\ChangeSet,s" />
     <CustomBuild Include="scm-rev" />
   </ItemGroup>
 </Project>

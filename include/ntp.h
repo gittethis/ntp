@@ -473,6 +473,7 @@ struct peer {
 #define FLAG_TSTAMP_PPS	0x10000	/* PPS source provides absolute timestamp */
 #define FLAG_LOOPNONCE	0x20000	/* Use a nonce for the loopback test */
 #define FLAG_DISABLED	0x40000	/* peer is being torn down */
+#define FLAG_NTS       0x80000
 
 /*
  * Definitions for the clear() routine.  We use memset() to clear

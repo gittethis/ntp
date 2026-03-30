@@ -200,6 +200,7 @@
 %token	<Integer>	T_Ntp
 %token	<Integer>	T_Ntpport
 %token	<Integer>	T_NtpSignDsocket
+%token	<Integer>	T_Nts
 %token	<Integer>	T_Orphan
 %token	<Integer>	T_Orphanwait
 %token	<Integer>	T_PCEdigest
@@ -500,6 +501,7 @@ option_flag_keyword
 	|	T_Burst
 	|	T_Iburst
 	|	T_Noselect
+	|	T_Nts
 	|	T_Preempt
 	|	T_Prefer
 	|	T_True

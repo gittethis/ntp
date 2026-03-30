@@ -1,0 +1,2 @@
+^D:\NTP\PORTS\WINNT\VS2015\NTPDC\SCM-REV
+call ..\..\scripts\mkver.bat -S scm-rev -P ntpdc
