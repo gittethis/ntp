@@ -953,6 +953,18 @@ newpeer(
 	peer->version = version;
 	peer->flags = flags;
 	peer->cast_flags = cast_flags;
+	//NTS-addon
+	if (peer->flags & FLAG_NTS) {
+		peer->nts_state = NTS_KE_PENDING;
+		peer->nts_ke_port = 4460;
+		peer->nts_ctx = NULL;
+	}
+	else {
+		peer->nts_state = NTS_DISABLED;
+		peer->nts_ke_port = 0;
+		peer->nts_ctx = NULL;
+	}
+	//NTS-addon-end
 	set_peerdstadr(peer, 
 		       select_peerinterface(peer, srcadr, dstadr));
 

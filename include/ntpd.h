@@ -240,6 +240,11 @@ extern struct value tai_leap;
 /* ntp_proto.c */
 extern	void	transmit	(struct peer *);
 extern	void	receive 	(struct recvbuf *);
+//NTS-addon-start
+extern void		nts_ke_kick(struct peer*);
+extern void		nts_peer_xmit(struct peer*);
+extern int		nts_packet_verify(struct peer*, struct recvbuf*, int);
+//NTS-addon-end
 extern	void	peer_clear	(struct peer *, const char *);
 extern	void 	process_packet	(struct peer *, struct pkt *, u_int);
 extern	void	clock_select	(void);

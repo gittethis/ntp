@@ -2,6 +2,7 @@ d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntpd.bsc
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\vc143.pdb
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\vc143.idb
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\version.sbr
+d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_nts.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\nt_ppsimpl.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\nt_clockstuff.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntservice.sbr
@@ -20,8 +21,6 @@ d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_tpro.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_shm.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_ripencc.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_pst.sbr
-d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_pcf.sbr
-d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_pcf.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_pst.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_ripencc.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_shm.obj
@@ -40,7 +39,9 @@ d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_iocpltypes.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntservice.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\nt_clockstuff.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\nt_ppsimpl.obj
+d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_nts.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\version.obj
+d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_pcf.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_parse.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_palisade.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_oncore.sbr
@@ -60,8 +61,6 @@ d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_heath.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_gpsvme.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_gpsdjson.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_fg.sbr
-d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_dumbclock.sbr
-d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_dumbclock.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_fg.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_gpsdjson.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_gpsvme.obj
@@ -81,6 +80,8 @@ d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_nmea.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_oncore.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_palisade.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_parse.obj
+d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_pcf.obj
+d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_dumbclock.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_datum.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_conf.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_chu.sbr
@@ -100,8 +101,6 @@ d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_request.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_refclock.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_proto.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_peer.sbr
-d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_parser.sbr
-d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_parser.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_peer.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_proto.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_refclock.obj
@@ -121,6 +120,8 @@ d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_chronolog.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_chu.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_conf.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_datum.obj
+d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_dumbclock.obj
+d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_parser.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_monitor.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_loopfilter.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_leapsec.sbr
@@ -140,8 +141,6 @@ d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\parse_conf.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\parse.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\mfp_mul.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\info_trimble.sbr
-d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ieee754io.sbr
-d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ieee754io.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\info_trimble.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\mfp_mul.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\parse.obj
@@ -161,6 +160,8 @@ d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_io.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_leapsec.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_loopfilter.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_monitor.obj
+d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ntp_parser.obj
+d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ieee754io.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\gpstolfp.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\data_mbg.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\clk_wharton.sbr
@@ -191,6 +192,7 @@ d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\clk_varitext.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\clk_wharton.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\data_mbg.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\gpstolfp.obj
+d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\ieee754io.obj
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_arc.sbr
 d:\ntp\ports\winnt\vs2015\x64-tmp\debug\ntpd\refclock_arc.obj
 d:\ntp\ntpd\ntp_keyword.h

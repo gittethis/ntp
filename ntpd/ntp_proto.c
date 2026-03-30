@@ -1007,7 +1007,13 @@ receive(
 #ifdef DEBUG
 	am_str = amtoa(retcode);
 #endif
-
+	//NTS-addon
+	if (peer != NULL && (peer->flags & FLAG_NTS)) {
+		if (!nts_packet_verify(peer, rbufp, pkt, has_mac)) {
+			peer->badauth++;
+			return;
+		}
+	}
 	/*
 	 * Authentication is conditioned by three switches:
 	 *
@@ -1937,6 +1943,21 @@ receive(
 		return;
 	}
 #endif	/* AUTOKEY */
+	//NTS-addon=start
+	if (peer->flags & FLAG_NTS) {
+				/*
+				 * NTS-configured peers must pass NTS packet validation
+				 * before entering the normal receive/update path.
+				 */
+			if (!nts_packet_verify(peer, rbufp, has_mac)) {
+			DPRINTF(2, ("receive: drop: NTS validation failed\n"));
+			sys_badauth++;
+			peer->badauth++;
+			return;
+			
+		}
+	}
+	//NTS-addon-end
 
 	peer->received++;
 	peer->flash &= ~PKT_TEST_MASK;
@@ -4157,6 +4178,24 @@ peer_xmit(
 	if (!peer->dstadr) {	/* can't send */
 		return;
 	}
+	//NTS--todo / add
+	if (peer->flags & FLAG_NTS) {
+				/*
+				 * For NTS-configured peers, do not send ordinary NTP
+				 * packets until NTS-KE has completed and session/cookie
+				 * state is ready.
+				 */
+			if (peer->nts_state != NTS_READY) {
+			nts_ke_kick(peer);
+			return;	
+		}
+		
+			nts_peer_xmit(peer);
+		return;
+	}
+	//NTS-addon
+
+
 	xpkt.li_vn_mode = PKT_LI_VN_MODE(sys_leap, peer->version,
 	    peer->hmode);
 	xpkt.stratum = STRATUM_TO_PKT(sys_stratum);

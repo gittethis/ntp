@@ -3,10 +3,11 @@
   updated keyword-gen-utd and ntp_keyword.h
   Using NT Shell Script to generate version.c
   The system cannot find the file specified.
-  ntpd version 4.2.8p18-o date Mar 30 2026  time 12:41:03.29 (UTC+03:00) (2)
+  ntpd version 4.2.8p18-o date Mar 30 2026  time 14:41:20.07 (UTC+03:00) (4)
 D:\Microsoft Visual Studio\2022\Professional\MSBuild\Microsoft\VC\v170\Microsoft.CppCommon.targets(245,5): warning MSB8064: Custom build for item "scm-rev" succeeded, but specified dependency "d:\ntp\ports\winnt\vs2015\ntpd\scm-rev" does not exist. This may cause incremental build to work incorrectly.
 cl : command line warning D9035: option 'Gm' has been deprecated and will be removed in a future release
   version.c
+  ntp_nts.c
   nt_ppsimpl.c
   nt_clockstuff.c
   ntservice.c
@@ -25,9 +26,9 @@ cl : command line warning D9035: option 'Gm' has been deprecated and will be rem
   refclock_shm.c
   refclock_ripencc.c
   refclock_pst.c
-  refclock_pcf.c
   Generating Code...
   Compiling...
+  refclock_pcf.c
   refclock_parse.c
   refclock_palisade.c
   refclock_oncore.c
@@ -47,9 +48,9 @@ cl : command line warning D9035: option 'Gm' has been deprecated and will be rem
   refclock_gpsvme.c
   refclock_gpsdjson.c
   refclock_fg.c
-  refclock_dumbclock.c
   Generating Code...
   Compiling...
+  refclock_dumbclock.c
   refclock_datum.c
   refclock_conf.c
   refclock_chu.c
@@ -68,10 +69,13 @@ cl : command line warning D9035: option 'Gm' has been deprecated and will be rem
   ntp_request.c
   ntp_refclock.c
   ntp_proto.c
+D:\ntp\ntpd\ntp_proto.c(1012,42): warning C4047: 'function': 'int' differs in levels of indirection from 'pkt *'
+D:\ntp\ntpd\ntp_proto.c(1012,39): warning C4024: 'nts_packet_verify': different types for formal and actual parameter 3
+D:\ntp\ntpd\ntp_proto.c(1012,44): warning C4020: 'nts_packet_verify': too many actual parameters
   ntp_peer.c
-  ntp_parser.c
   Generating Code...
   Compiling...
+  ntp_parser.c
   ntp_monitor.c
   ntp_loopfilter.c
   ntp_leapsec.c
@@ -91,9 +95,9 @@ cl : command line warning D9035: option 'Gm' has been deprecated and will be rem
   parse.c
   mfp_mul.c
   info_trimble.c
-  ieee754io.c
   Generating Code...
   Compiling...
+  ieee754io.c
   gpstolfp.c
   data_mbg.c
   clk_wharton.c

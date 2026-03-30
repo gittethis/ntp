@@ -253,6 +253,12 @@ struct endpt_tag {
 #define TEST15		0x4000
 #define TEST16		0x8000
 
+ /* per-peer NTS state */ //NTS-addon
+#define NTS_DISABLED   0
+#define NTS_KE_PENDING 1
+#define NTS_READY      2
+#define NTS_FAILED     3
+
 /*
  * The peer structure. Holds state information relating to the guys
  * we are peering with. Most of this stuff is from section 3.2 of the
@@ -280,6 +286,12 @@ struct peer {
 	u_char	num_events;	/* number of error events */
 	u_int32	ttl;		/* ttl/refclock mode */
 	char	*ident;		/* group identifier name */
+	//NTS-struct addon
+	u_char nts_state;          /* OFF / KE_PENDING / READY / FAILED */
+	u_short nts_ke_port;       /* usually 4460 */
+	void* nts_ctx;             /* your TLS/KE/session object */
+	/* cookie/session storage here */
+	//NTS-struct addon
 
 	/*
 	 * Variables used by reference clock support

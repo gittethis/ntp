@@ -312,6 +312,9 @@
     <ClCompile Include="..\..\..\..\libparse\clk_sel240x.c">
       <Filter>Parse Lib</Filter>
     </ClCompile>
+    <ClCompile Include="ntp_nts.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\..\include\ascii.h">

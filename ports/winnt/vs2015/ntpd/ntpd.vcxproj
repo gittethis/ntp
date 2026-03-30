@@ -213,6 +213,7 @@
     <ClCompile Include="..\..\ntpd\ntservice.c" />
     <ClCompile Include="..\..\ntpd\nt_clockstuff.c" />
     <ClCompile Include="..\..\ntpd\nt_ppsimpl.c" />
+    <ClCompile Include="ntp_nts.c" />
     <ClCompile Include="version.c" />
   </ItemGroup>
   <ItemGroup>
