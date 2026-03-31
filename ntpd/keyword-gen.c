@@ -105,7 +105,7 @@ struct key_tok ntp_keywords[] = {
 { "autokey",		T_Autokey,		FOLLBY_TOKEN },
 { "burst",		T_Burst,		FOLLBY_TOKEN },
 { "iburst",		T_Iburst,		FOLLBY_TOKEN },
-{ "nts",		T_Nts,		FOLLBY_TOKEN },
+{ "nts",		T_Nts,			FOLLBY_TOKEN },
 { "key",		T_Key,			FOLLBY_TOKEN },
 { "maxpoll",		T_Maxpoll,		FOLLBY_TOKEN },
 { "mdnstries",		T_Mdnstries,		FOLLBY_TOKEN },

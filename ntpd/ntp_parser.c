@@ -358,7 +358,8 @@ extern int yydebug;
     T_Wander = 467,                /* T_Wander  */
     T_Jitter = 468,                /* T_Jitter  */
     T_Prop_Delay = 469,            /* T_Prop_Delay  */
-    T_Proc_Delay = 470             /* T_Proc_Delay  */
+    T_Proc_Delay = 470,             /* T_Proc_Delay  */
+    T_Nts = 471                     /* T_Nts */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -580,6 +581,7 @@ extern int yydebug;
 #define T_Jitter 468
 #define T_Prop_Delay 469
 #define T_Proc_Delay 470
+#define T_Nts 471
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
@@ -1460,7 +1462,7 @@ static const char *const yytname[] =
   "T_Week", "T_Wildcard", "T_Xleave", "T_Xmtnonce", "T_Year", "T_Flag",
   "T_EOC", "T_Simulate", "T_Beep_Delay", "T_Sim_Duration",
   "T_Server_Offset", "T_Duration", "T_Freq_Offset", "T_Wander", "T_Jitter",
-  "T_Prop_Delay", "T_Proc_Delay", "'|'", "'='", "'('", "')'", "'{'", "'}'",
+  "T_Prop_Delay", "T_Proc_Delay", "T_Nts", "'|'", "'='", "'('", "')'", "'{'", "'}'",
   "$accept", "configuration", "command_list", "command", "server_command",
   "client_type", "address", "ip_address", "address_fam", "option_list",
   "option", "option_flag", "option_flag_keyword", "option_int",
@@ -4162,4 +4164,3 @@ int main(int argc, char *argv[])
 	return 0;
 }
 #endif
-

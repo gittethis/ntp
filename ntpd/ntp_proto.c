@@ -18,6 +18,7 @@
 #include "ntp_psl.h"
 #include "refidsmear.h"
 
+
 #include <stdio.h>
 #ifdef HAVE_LIBSCF_H
 #include <libscf.h>
@@ -1009,7 +1010,7 @@ receive(
 #endif
 	//NTS-addon
 	if (peer != NULL && (peer->flags & FLAG_NTS)) {
-		if (!nts_packet_verify(peer, rbufp, pkt, has_mac)) {
+		if (!nts_packet_verify(peer, rbufp, has_mac)) {
 			peer->badauth++;
 			return;
 		}
@@ -4170,27 +4171,20 @@ peer_xmit(
 	struct peer *peer	/* peer structure pointer */
 	)
 {
+	msyslog(LOG_INFO, "NTS:peer_xmit---------peer %s------------------------start", ntoa(&peer->srcadr));
 	struct pkt xpkt;	/* transmit packet */
 	size_t	sendlen, authlen;
 	keyid_t	xkeyid = 0;	/* transmit key ID */
 	l_fp	xmt_tx, xmt_ty;
 
 	if (!peer->dstadr) {	/* can't send */
+		msyslog(LOG_INFO, "NTS:peer_xmit---NO dstaddr");
 		return;
 	}
 	//NTS--todo / add
 	if (peer->flags & FLAG_NTS) {
-				/*
-				 * For NTS-configured peers, do not send ordinary NTP
-				 * packets until NTS-KE has completed and session/cookie
-				 * state is ready.
-				 */
-			if (peer->nts_state != NTS_READY) {
-			nts_ke_kick(peer);
-			return;	
-		}
-		
-			nts_peer_xmit(peer);
+		msyslog(LOG_INFO, "NTS:peer_xmit---has NTS_FLAG");
+		(void)nts_run_peer_sync(peer);
 		return;
 	}
 	//NTS-addon

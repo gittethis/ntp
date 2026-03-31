@@ -20,7 +20,8 @@
 # include <security.h>
 # include <wincrypt.h>
 # include <bcrypt.h>
-#include "sqlite3.h"
+# include <time.h>
+# include "sqlite3.h"
 #else
 # error "ntp_nts.h currently expects Windows/SChannel"
 #endif
@@ -88,6 +89,35 @@ typedef struct AeadSealResult {
 	size_t ciphertextCap;
 } AeadSealResult;
 
+typedef enum NtsServiceSyncState {
+	NTS_SERVICE_SYNC_STABLE = 0,
+	NTS_SERVICE_SYNC_UNSTABLE = 1,
+	NTS_SERVICE_SYNC_FAILED = 2
+} NtsServiceSyncState;
+
+typedef enum NtpSyncResult {
+	NTP_SYNC_RESULT_SUCCESS = 0,
+	NTP_SYNC_RESULT_NETWORK_FAILURE = 1,
+	NTP_SYNC_RESULT_AUTH_FAILURE = 2,
+	NTP_SYNC_RESULT_PARSE_FAILURE = 3,
+	NTP_SYNC_RESULT_INTERNAL_ERROR = 4
+} NtpSyncResult;
+
+typedef struct NtpSyncOutcome {
+	NtpSyncResult result;
+	double offsetSeconds;
+	double delaySeconds;
+	int haveTiming;
+} NtpSyncOutcome;
+
+typedef enum SessionAgeDecision {
+	SESSION_AGE_REUSE = 0,
+	SESSION_AGE_PREFER_REFRESH = 1,
+	SESSION_AGE_FORCE_REFRESH = 2
+} SessionAgeDecision;
+
+void ntp_sync_outcome_init(NtpSyncOutcome* o);
+
 void aead_seal_result_init(AeadSealResult* r);
 void aead_seal_result_free(AeadSealResult* r);
 
@@ -152,6 +182,9 @@ extern "C" {
 		size_t* cookieLens;
 		size_t cookieCount;
 		size_t cookieCap;
+
+		time_t createdAt;
+		time_t updatedAt;
 	} NtsStoredSession;
 
 	typedef struct NtsKeContext {
@@ -237,6 +270,7 @@ extern "C" {
 	void nts_peer_xmit(struct peer* peer);
 	int nts_packet_verify(struct peer* peer, struct recvbuf* rbufp, int has_mac);
 
+
 /*#ifdef __cplusplus
 }
 #endif*/
@@ -306,23 +340,20 @@ int nts_build_basic_ntp_header(const uint8_t txTimestampBytes[8],
 
 EVP_CIPHER* nts_get_cipher(uint16_t aeadId);
 
-int
-nts_aead_seal(uint16_t aeadId,
+int nts_aead_seal(uint16_t aeadId,
 	const uint8_t* key, size_t keyLen,
 	const uint8_t* associatedData, size_t associatedDataLen,
 	const uint8_t* plaintext, size_t plaintextLen,
 	AeadSealResult* out);
 
-int
-nts_aead_open(uint16_t aeadId,
+int nts_aead_open(uint16_t aeadId,
 	const uint8_t* key, size_t keyLen,
 	const uint8_t* associatedData, size_t associatedDataLen,
 	const uint8_t* nonce, size_t nonceLen,
 	const uint8_t* ciphertext, size_t ciphertextLen,
 	uint8_t** plaintextOut, size_t* plaintextOutLen, size_t* plaintextOutCap);
 
-int
-nts_append_nts_authenticator_ef(uint8_t** packet,
+int nts_append_nts_authenticator_ef(uint8_t** packet,
 	size_t* packetLen,
 	size_t* packetCap,
 	const uint8_t* nonce,
@@ -331,18 +362,15 @@ nts_append_nts_authenticator_ef(uint8_t** packet,
 	size_t ciphertextLen,
 	size_t extraPadding);
 
-int
-nts_parse_ntp_response_outer(const uint8_t* packet,
+int nts_parse_ntp_response_outer(const uint8_t* packet,
 	size_t packetLen,
 	NtsResponseParsed* out);
 
-int
-nts_build_authenticated_ntp_request(const NtsKeContext* ctx,
+int nts_build_authenticated_ntp_request(const NtsKeContext* ctx,
 	size_t cookieIndex,
 	NtsRequestBuildResult* out);
 
-int
-nts_send_udp_and_receive(const char* host,
+int nts_send_udp_and_receive(const char* host,
 	uint16_t port,
 	const uint8_t* request,
 	size_t requestLen,
@@ -351,7 +379,20 @@ nts_send_udp_and_receive(const char* host,
 	size_t* responseCap,
 	NtpExchangeTimes* times);
 
-int
-nts_do_authenticated_ntp_sync(NtsKeContext* ctx, NtpComputedResult* syncOut);
 
+NtpSyncOutcome nts_do_authenticated_ntp_sync(NtsKeContext* ctx);
+void nts_clear_runtime_session(NtsKeContext* ctx);
+int nts_delete_session_from_sqlite(const char* host);
+NtsServiceSyncState nts_classify_sync_stability(const NtpSyncOutcome* o);
+int nts_run_peer_sync(struct peer* peer);
+
+int nts_is_stored_session_too_old(const NtsStoredSession* s);
+int nts_refresh_session(NtsKeContext* ctx);
+int nts_is_stored_session_too_old(const NtsStoredSession* s);
+int nts_export_keying_material(TlsClientContext* tls,
+	uint16_t negotiatedAead,
+	int clientToServer,
+	uint8_t** outKey,
+	size_t* outKeyLen,
+	size_t* outKeyCap);
 #endif

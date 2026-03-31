@@ -266,7 +266,8 @@ extern int yydebug;
     T_Wander = 467,                /* T_Wander  */
     T_Jitter = 468,                /* T_Jitter  */
     T_Prop_Delay = 469,            /* T_Prop_Delay  */
-    T_Proc_Delay = 470             /* T_Proc_Delay  */
+    T_Proc_Delay = 470,             /* T_Proc_Delay  */
+    T_Nts = 471			            /*T_Nts*/
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif

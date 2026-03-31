@@ -23,6 +23,18 @@
 #endif
 
 void
+ntp_sync_outcome_init(NtpSyncOutcome* o)
+{
+	if (o == NULL)
+		return;
+
+	o->result = NTP_SYNC_RESULT_INTERNAL_ERROR;
+	o->offsetSeconds = 0.0;
+	o->delaySeconds = 0.0;
+	o->haveTiming = 0;
+}
+
+void
 PrintLastError(const char* what)
 {
 	DWORD err;
@@ -574,6 +586,8 @@ nts_stored_session_init(NtsStoredSession* s)
 
 	memset(s, 0, sizeof(*s));
 	s->ntpPort = 123;
+	s->createdAt = 0;
+	s->updatedAt = 0;
 }
 
 void
@@ -593,6 +607,8 @@ nts_stored_session_free(NtsStoredSession* s)
 
 	s->ntpPort = 123;
 	s->aeadId = 0;
+	s->createdAt = 0;
+	s->updatedAt = 0;
 }
 
 void
@@ -787,8 +803,7 @@ nts_peer_xmit(struct peer* peer)
 	LFPTOD(&xmt_ty, peer->xleave);
 }
 
-int
-nts_packet_verify(struct peer* peer, struct recvbuf* rbufp, int has_mac)
+int nts_packet_verify(struct peer* peer, struct recvbuf* rbufp, int has_mac)
 {
 	UNUSED_ARG(peer);
 	UNUSED_ARG(rbufp);
@@ -2366,7 +2381,7 @@ nts_load_session_from_sqlite(const char* host,NtsStoredSession* out,char** outDb
 	char* dbPath;
 
 	static const char* selectSessionSql =
-		"SELECT ntp_server, ntp_port, aead_id, c2s_key, s2c_key "
+		"SELECT ntp_server, ntp_port, aead_id, c2s_key, s2c_key, created_at, updated_at "
 		"FROM nts_sessions WHERE host = ?;";
 
 	static const char* selectCookiesSql =
@@ -2493,6 +2508,8 @@ nts_load_session_from_sqlite(const char* host,NtsStoredSession* out,char** outDb
 				return 0;
 			}
 		}
+		out->createdAt = (time_t)sqlite3_column_int64(stmt, 5);
+		out->updatedAt = (time_t)sqlite3_column_int64(stmt, 6);
 	}
 	else {
 		sqlite3_finalize(stmt);
@@ -2809,8 +2826,7 @@ nts_fill_random(uint8_t* p, size_t n)
 	return (st == 0);
 }
 
-int
-nts_append_extension_field(uint8_t** packet,
+int nts_append_extension_field(uint8_t** packet,
 	size_t* packetLen,
 	size_t* packetCap,
 	uint16_t fieldType,
@@ -2847,8 +2863,7 @@ nts_append_extension_field(uint8_t** packet,
 	return 1;
 }
 
-int
-nts_build_basic_ntp_header(const uint8_t txTimestampBytes[8],
+int nts_build_basic_ntp_header(const uint8_t txTimestampBytes[8],
 	uint8_t** outPacket,
 	size_t* outPacketLen,
 	size_t* outPacketCap)
@@ -2875,8 +2890,7 @@ nts_build_basic_ntp_header(const uint8_t txTimestampBytes[8],
 	return 1;
 }
 
-size_t
-nts_aead_key_size(uint16_t aeadId)
+size_t nts_aead_key_size(uint16_t aeadId)
 {
 	switch (aeadId) {
 	case 15:	/* AEAD_AES_SIV_CMAC_256 */
@@ -2886,8 +2900,7 @@ nts_aead_key_size(uint16_t aeadId)
 	}
 }
 
-EVP_CIPHER*
-nts_get_cipher(uint16_t aeadId)
+EVP_CIPHER* nts_get_cipher(uint16_t aeadId)
 {
 	switch (aeadId) {
 	case 15:	/* RFC 5297 AEAD_AES_SIV_CMAC_256, K_LEN = 32 */
@@ -2904,8 +2917,7 @@ nts_get_cipher(uint16_t aeadId)
 	}
 }
 
-int
-nts_aead_seal(uint16_t aeadId,
+int nts_aead_seal(uint16_t aeadId,
 	const uint8_t* key, size_t keyLen,
 	const uint8_t* associatedData, size_t associatedDataLen,
 	const uint8_t* plaintext, size_t plaintextLen,
@@ -3116,8 +3128,7 @@ nts_aead_seal(uint16_t aeadId,
 	return ok;
 }
 
-int
-nts_aead_open(uint16_t aeadId,
+int nts_aead_open(uint16_t aeadId,
 	const uint8_t* key, size_t keyLen,
 	const uint8_t* associatedData, size_t associatedDataLen,
 	const uint8_t* nonce, size_t nonceLen,
@@ -3303,8 +3314,7 @@ nts_aead_open(uint16_t aeadId,
 }
 
 
-int
-nts_append_nts_authenticator_ef(uint8_t** packet,
+int nts_append_nts_authenticator_ef(uint8_t** packet,
 	size_t* packetLen,
 	size_t* packetCap,
 	const uint8_t* nonce,
@@ -3402,8 +3412,7 @@ nts_append_nts_authenticator_ef(uint8_t** packet,
 	return ok;
 }
 
-int
-nts_parse_ntp_response_outer(const uint8_t* packet,
+int nts_parse_ntp_response_outer(const uint8_t* packet,
 	size_t packetLen,
 	NtsResponseParsed* out)
 {
@@ -3536,8 +3545,7 @@ nts_parse_ntp_response_outer(const uint8_t* packet,
 }
 
 
-int
-nts_build_authenticated_ntp_request(const NtsKeContext* ctx,
+int nts_build_authenticated_ntp_request(const NtsKeContext* ctx,
 	size_t cookieIndex,
 	NtsRequestBuildResult* out)
 {
@@ -3771,8 +3779,7 @@ nts_build_authenticated_ntp_request(const NtsKeContext* ctx,
 }
 
 
-int
-nts_send_udp_and_receive(const char* host,
+int nts_send_udp_and_receive(const char* host,
 	uint16_t port,
 	const uint8_t* request,
 	size_t requestLen,
@@ -3893,10 +3900,9 @@ nts_send_udp_and_receive(const char* host,
 	return ok;
 }
 
-
-int
-nts_do_authenticated_ntp_sync(NtsKeContext* ctx, NtpComputedResult* syncOut)
+NtpSyncOutcome nts_do_authenticated_ntp_sync(NtsKeContext* ctx)
 {
+	NtpSyncOutcome outcome;
 	NtsRequestBuildResult req;
 	uint8_t* udpResponse;
 	size_t udpResponseLen;
@@ -3910,23 +3916,21 @@ nts_do_authenticated_ntp_sync(NtsKeContext* ctx, NtpComputedResult* syncOut)
 	uint8_t* decryptedInner;
 	size_t decryptedInnerLen;
 	size_t decryptedInnerCap;
-	size_t i;
 	ParsedNtpHeaderTimes hdrTimes;
 	NtpComputedResult sync;
-	int cookieIndexToSend;
-	int ok;
+	size_t i;
 
-	if (ctx == NULL)
-		return 0;
+	ntp_sync_outcome_init(&outcome);
 
-	if (syncOut != NULL)
-		ntp_computed_result_init(syncOut);
+	if (ctx == NULL) {
+		outcome.result = NTP_SYNC_RESULT_INTERNAL_ERROR;
+		return outcome;
+	}
 
 	if (ctx->negotiatedNtpServer == NULL || ctx->negotiatedNtpServer[0] == '\0') {
 		if (!nts_str_set(&ctx->negotiatedNtpServer, ctx->ntsKeHost)) {
-			msyslog(LOG_ERR,
-				"nts_do_authenticated_ntp_sync: failed to default negotiatedNtpServer");
-			return 0;
+			outcome.result = NTP_SYNC_RESULT_INTERNAL_ERROR;
+			return outcome;
 		}
 	}
 
@@ -3934,23 +3938,24 @@ nts_do_authenticated_ntp_sync(NtsKeContext* ctx, NtpComputedResult* syncOut)
 		ctx->negotiatedNtpPort = 123;
 
 	if (ctx->cookies == NULL || ctx->cookieLens == NULL || ctx->cookieCount == 0) {
-		msyslog(LOG_ERR,
-			"nts_do_authenticated_ntp_sync: no cookies available");
-		return 0;
+		msyslog(LOG_ERR, "nts_do_authenticated_ntp_sync: no cookies available");
+		outcome.result = NTP_SYNC_RESULT_INTERNAL_ERROR;
+		return outcome;
 	}
 
 	if (ctx->c2sKey == NULL || ctx->c2sKeyLen == 0 ||
 		ctx->s2cKey == NULL || ctx->s2cKeyLen == 0) {
-		msyslog(LOG_ERR,
-			"nts_do_authenticated_ntp_sync: missing derived keys");
-		return 0;
+		msyslog(LOG_ERR, "nts_do_authenticated_ntp_sync: missing derived keys");
+		outcome.result = NTP_SYNC_RESULT_INTERNAL_ERROR;
+		return outcome;
 	}
 
 	if (ctx->negotiatedAead != 15) {
 		msyslog(LOG_ERR,
 			"nts_do_authenticated_ntp_sync: unsupported AEAD: %u",
 			(unsigned)ctx->negotiatedAead);
-		return 0;
+		outcome.result = NTP_SYNC_RESULT_INTERNAL_ERROR;
+		return outcome;
 	}
 
 	nts_request_build_result_init(&req);
@@ -3968,238 +3973,844 @@ nts_do_authenticated_ntp_sync(NtsKeContext* ctx, NtpComputedResult* syncOut)
 	parsed_ntp_header_times_init(&hdrTimes);
 	ntp_computed_result_init(&sync);
 
-	ok = 0;
-	cookieIndexToSend = 0;
+	if (!nts_build_authenticated_ntp_request(ctx, 0, &req)) {
+		msyslog(LOG_ERR, "nts_do_authenticated_ntp_sync: nts_build_authenticated_ntp_request failed");
+		outcome.result = NTP_SYNC_RESULT_INTERNAL_ERROR;
+		goto done;
+	}
 
-	do {
-		if (!nts_build_authenticated_ntp_request(ctx,
-			(size_t)cookieIndexToSend,
-			&req)) {
+	if (!nts_send_udp_and_receive(ctx->negotiatedNtpServer,
+		ctx->negotiatedNtpPort,
+		req.packet,
+		req.packetLen,
+		&udpResponse,
+		&udpResponseLen,
+		&udpResponseCap,
+		&times)) {
+		msyslog(LOG_ERR, "nts_do_authenticated_ntp_sync: nts_send_udp_and_receive failed");
+		outcome.result = NTP_SYNC_RESULT_NETWORK_FAILURE;
+		goto done;
+	}
+
+	msyslog(LOG_INFO,
+		"nts_do_authenticated_ntp_sync: received UDP NTP response: %lu bytes",
+		(unsigned long)udpResponseLen);
+
+	if (!nts_parse_ntp_response_outer(udpResponse, udpResponseLen, &parsed)) {
+		msyslog(LOG_ERR, "nts_do_authenticated_ntp_sync: nts_parse_ntp_response_outer failed");
+		outcome.result = NTP_SYNC_RESULT_PARSE_FAILURE;
+		goto done;
+	}
+
+	if (!parsed.hasUid ||
+		parsed.uidLen != req.uniqueIdLen ||
+		memcmp(parsed.uid, req.uniqueId, req.uniqueIdLen) != 0) {
+		msyslog(LOG_ERR, "nts_do_authenticated_ntp_sync: response Unique Identifier mismatch");
+		outcome.result = NTP_SYNC_RESULT_AUTH_FAILURE;
+		goto done;
+	}
+
+	if (!parsed.hasAuthenticator) {
+		msyslog(LOG_ERR, "nts_do_authenticated_ntp_sync: response missing authenticator EF");
+		outcome.result = NTP_SYNC_RESULT_PARSE_FAILURE;
+		goto done;
+	}
+
+	authPos = 48;
+	while (authPos + 4 <= udpResponseLen) {
+		uint16_t fieldType;
+		uint16_t fieldLen;
+
+		fieldType = nts_read_be16(&udpResponse[authPos]);
+		fieldLen = nts_read_be16(&udpResponse[authPos + 2]);
+
+		if (fieldLen < 4 ||
+			(fieldLen % 4) != 0 ||
+			authPos + fieldLen > udpResponseLen) {
 			msyslog(LOG_ERR,
-				"nts_do_authenticated_ntp_sync: nts_build_authenticated_ntp_request failed");
-			break;
+				"nts_do_authenticated_ntp_sync: malformed outer response while locating authenticator");
+			outcome.result = NTP_SYNC_RESULT_AUTH_FAILURE;
+			goto done;
 		}
 
-		if (!nts_send_udp_and_receive(ctx->negotiatedNtpServer,
-			ctx->negotiatedNtpPort,
-			req.packet,
-			req.packetLen,
-			&udpResponse,
-			&udpResponseLen,
-			&udpResponseCap,
-			&times)) {
+		if (fieldType == 0x0404)
+			break;
+
+		authPos += fieldLen;
+	}
+
+	if (authPos + 4 > udpResponseLen) {
+		msyslog(LOG_ERR,
+			"nts_do_authenticated_ntp_sync: could not relocate authenticator EF");
+		outcome.result = NTP_SYNC_RESULT_AUTH_FAILURE;
+		goto done;
+	}
+
+	if (!nts_buf_set(&associatedData,
+		&associatedDataLen,
+		&associatedDataCap,
+		udpResponse,
+		authPos)) {
+		msyslog(LOG_ERR,
+			"nts_do_authenticated_ntp_sync: failed to build associatedData");
+		outcome.result = NTP_SYNC_RESULT_INTERNAL_ERROR;
+		goto done;
+	}
+
+	if (!nts_aead_open(ctx->negotiatedAead,
+		ctx->s2cKey, ctx->s2cKeyLen,
+		associatedData, associatedDataLen,
+		parsed.authenticatorNonce, parsed.authenticatorNonceLen,
+		parsed.authenticatorCiphertext, parsed.authenticatorCiphertextLen,
+		&decryptedInner, &decryptedInnerLen, &decryptedInnerCap)) {
+		msyslog(LOG_ERR, "nts_do_authenticated_ntp_sync: nts_aead_open failed");
+		outcome.result = NTP_SYNC_RESULT_AUTH_FAILURE;
+		goto done;
+	}
+
+	msyslog(LOG_INFO,
+		"nts_do_authenticated_ntp_sync: authenticated NTP response verified successfully");
+	msyslog(LOG_INFO,
+		"nts_do_authenticated_ntp_sync: decrypted inner EF bytes: %lu",
+		(unsigned long)decryptedInnerLen);
+
+	if (!nts_parse_decrypted_inner_efs(decryptedInner, decryptedInnerLen, &parsed)) {
+		msyslog(LOG_ERR, "nts_do_authenticated_ntp_sync: nts_parse_decrypted_inner_efs failed");
+		outcome.result = NTP_SYNC_RESULT_PARSE_FAILURE;
+		goto done;
+	}
+
+	if (ctx->cookieCount > 0) {
+		free(ctx->cookies[0]);
+
+		for (i = 1; i < ctx->cookieCount; i++) {
+			ctx->cookies[i - 1] = ctx->cookies[i];
+			ctx->cookieLens[i - 1] = ctx->cookieLens[i];
+		}
+		ctx->cookieCount--;
+	}
+
+	msyslog(LOG_INFO,
+		"nts_do_authenticated_ntp_sync: cookies left after consume: %lu",
+		(unsigned long)ctx->cookieCount);
+	msyslog(LOG_INFO,
+		"nts_do_authenticated_ntp_sync: returned cookies: %lu",
+		(unsigned long)parsed.returnedCookieCount);
+
+	for (i = 0; i < parsed.returnedCookieCount; i++) {
+		if (!nts_cookie_array_add(&ctx->cookies,
+			&ctx->cookieLens,
+			&ctx->cookieCount,
+			&ctx->cookieCap,
+			parsed.returnedCookies[i],
+			parsed.returnedCookieLens[i])) {
 			msyslog(LOG_ERR,
-				"nts_do_authenticated_ntp_sync: nts_send_udp_and_receive failed");
-			break;
+				"nts_do_authenticated_ntp_sync: failed to append returned cookie");
+			outcome.result = NTP_SYNC_RESULT_INTERNAL_ERROR;
+			goto done;
 		}
+	}
 
-		msyslog(LOG_INFO,
-			"nts_do_authenticated_ntp_sync: received UDP NTP response: %lu bytes",
-			(unsigned long)udpResponseLen);
+	while (ctx->cookieCount > 8) {
+		size_t last = ctx->cookieCount - 1;
+		free(ctx->cookies[last]);
+		ctx->cookies[last] = NULL;
+		ctx->cookieLens[last] = 0;
+		ctx->cookieCount--;
+	}
 
-		if (!nts_parse_ntp_response_outer(udpResponse, udpResponseLen, &parsed)) {
-			msyslog(LOG_ERR,
-				"nts_do_authenticated_ntp_sync: nts_parse_ntp_response_outer failed");
-			break;
-		}
-
-		if (!parsed.hasUid ||
-			parsed.uidLen != req.uniqueIdLen ||
-			memcmp(parsed.uid, req.uniqueId, req.uniqueIdLen) != 0) {
-			msyslog(LOG_ERR,
-				"nts_do_authenticated_ntp_sync: response Unique Identifier mismatch");
-			break;
-		}
-
-		if (!parsed.hasAuthenticator) {
-			msyslog(LOG_ERR,
-				"nts_do_authenticated_ntp_sync: response missing authenticator EF");
-			break;
-		}
-
-		/*
-		 * Associated data is everything before the authenticator EF.
-		 * Relocate the authenticator EF in the outer response.
-		 */
-		authPos = 48;
-		while (authPos + 4 <= udpResponseLen) {
-			uint16_t fieldType;
-			uint16_t fieldLen;
-
-			fieldType = nts_read_be16(&udpResponse[authPos]);
-			fieldLen = nts_read_be16(&udpResponse[authPos + 2]);
-
-			if (fieldLen < 4 ||
-				(fieldLen % 4) != 0 ||
-				authPos + fieldLen > udpResponseLen) {
-				msyslog(LOG_ERR,
-					"nts_do_authenticated_ntp_sync: malformed outer response while locating authenticator");
-				break;
-			}
-
-			if (fieldType == 0x0404)
-				break;
-
-			authPos += fieldLen;
-		}
-
-		if (authPos + 4 > udpResponseLen) {
-			msyslog(LOG_ERR,
-				"nts_do_authenticated_ntp_sync: could not relocate authenticator EF");
-			break;
-		}
-
-		if (!nts_buf_set(&associatedData,
-			&associatedDataLen,
-			&associatedDataCap,
-			udpResponse,
-			authPos)) {
-			msyslog(LOG_ERR,
-				"nts_do_authenticated_ntp_sync: failed to build associatedData");
-			break;
-		}
-
-		if (!nts_aead_open(ctx->negotiatedAead,
-			ctx->s2cKey, ctx->s2cKeyLen,
-			associatedData, associatedDataLen,
-			parsed.authenticatorNonce, parsed.authenticatorNonceLen,
-			parsed.authenticatorCiphertext, parsed.authenticatorCiphertextLen,
-			&decryptedInner, &decryptedInnerLen, &decryptedInnerCap)) {
-			msyslog(LOG_ERR,
-				"nts_do_authenticated_ntp_sync: nts_aead_open failed");
-			break;
-		}
-
-		msyslog(LOG_INFO,
-			"nts_do_authenticated_ntp_sync: authenticated NTP response verified successfully");
-		msyslog(LOG_INFO,
-			"nts_do_authenticated_ntp_sync: decrypted inner EF bytes: %lu",
-			(unsigned long)decryptedInnerLen);
-
-		if (!nts_parse_decrypted_inner_efs(decryptedInner, decryptedInnerLen, &parsed)) {
-			msyslog(LOG_ERR,
-				"nts_do_authenticated_ntp_sync: nts_parse_decrypted_inner_efs failed");
-			break;
-		}
-
-		/*
-		 * Consume the cookie that was sent.
-		 */
-		if (ctx->cookieCount > 0) {
-			free(ctx->cookies[0]);
-
-			for (i = 1; i < ctx->cookieCount; i++) {
-				ctx->cookies[i - 1] = ctx->cookies[i];
-				ctx->cookieLens[i - 1] = ctx->cookieLens[i];
-			}
-
-			ctx->cookieCount--;
-		}
-
-		msyslog(LOG_INFO,
-			"nts_do_authenticated_ntp_sync: cookies left after consume: %lu",
-			(unsigned long)ctx->cookieCount);
-		msyslog(LOG_INFO,
-			"nts_do_authenticated_ntp_sync: returned cookies: %lu",
-			(unsigned long)parsed.returnedCookieCount);
-
-		if (parsed.returnedCookieCount > 0) {
-			for (i = 0; i < parsed.returnedCookieCount; i++) {
-				if (!nts_cookie_array_add(&ctx->cookies,
-					&ctx->cookieLens,
-					&ctx->cookieCount,
-					&ctx->cookieCap,
-					parsed.returnedCookies[i],
-					parsed.returnedCookieLens[i])) {
-					msyslog(LOG_ERR,
-						"nts_do_authenticated_ntp_sync: failed to append returned cookie");
-					break;
-				}
-			}
-			if (i != parsed.returnedCookieCount)
-				break;
-		}
-
-		/*
-		 * Optional: cap to 8 total cookies.
-		 */
-		while (ctx->cookieCount > 8) {
-			size_t last = ctx->cookieCount - 1;
-			free(ctx->cookies[last]);
-			ctx->cookies[last] = NULL;
-			ctx->cookieLens[last] = 0;
-			ctx->cookieCount--;
-		}
-
-		for (i = 0; i < ctx->cookieCount; i++) {
-			char* hx;
-
-			hx = nts_bytes_to_hex(ctx->cookies[i], ctx->cookieLens[i], 8);
-			if (hx != NULL) {
-				msyslog(LOG_INFO,
-					"nts_do_authenticated_ntp_sync: Cookie[%lu] %s",
-					(unsigned long)i,
-					hx);
-				free(hx);
-			}
-		}
-
-		if (!nts_update_cookies_in_session(ctx)) {
+	for (i = 0; i < ctx->cookieCount; i++) {
+		char* hx = nts_bytes_to_hex(ctx->cookies[i], ctx->cookieLens[i], 8);
+		if (hx != NULL) {
 			msyslog(LOG_INFO,
-				"nts_do_authenticated_ntp_sync: failed to update the local cookie store");
+				"nts_do_authenticated_ntp_sync: Cookie[%lu] %s",
+				(unsigned long)i, hx);
+			free(hx);
 		}
+	}
 
-		if (!nts_parse_authenticated_ntp_header_times(udpResponse,
-			udpResponseLen,
-			&hdrTimes)) {
-			msyslog(LOG_ERR,
-				"nts_do_authenticated_ntp_sync: nts_parse_authenticated_ntp_header_times failed");
-			break;
-		}
-
-		if (memcmp(hdrTimes.originateBytes, req.txTimestampBytes, 8) != 0) {
-			msyslog(LOG_ERR,
-				"nts_do_authenticated_ntp_sync: response originate timestamp does not match request transmit timestamp");
-			break;
-		}
-
-		times.t1 = req.requestUnixTime;
-		sync = nts_compute_ntp_offset_delay(times.t1,
-			hdrTimes.t2_receive,
-			hdrTimes.t3_transmit,
-			times.t4);
-
+	if (!nts_update_cookies_in_session(ctx)) {
 		msyslog(LOG_INFO,
-			"nts_do_authenticated_ntp_sync: T1 client send    = %.9f",
-			times.t1);
-		msyslog(LOG_INFO,
-			"nts_do_authenticated_ntp_sync: T2 server receive = %.9f",
-			hdrTimes.t2_receive);
-		msyslog(LOG_INFO,
-			"nts_do_authenticated_ntp_sync: T3 server xmit    = %.9f",
-			hdrTimes.t3_transmit);
-		msyslog(LOG_INFO,
-			"nts_do_authenticated_ntp_sync: T4 client recv    = %.9f",
-			times.t4);
+			"nts_do_authenticated_ntp_sync: failed to update the local cookie store");
+	}
 
-		msyslog(LOG_INFO,
-			"nts_do_authenticated_ntp_sync: Offset (sec) = %.9f",
-			sync.offsetSeconds);
-		msyslog(LOG_INFO,
-			"nts_do_authenticated_ntp_sync: Delay  (sec) = %.9f",
-			sync.delaySeconds);
+	if (!nts_parse_authenticated_ntp_header_times(udpResponse, udpResponseLen, &hdrTimes)) {
+		msyslog(LOG_ERR,
+			"nts_do_authenticated_ntp_sync: nts_parse_authenticated_ntp_header_times failed");
+		outcome.result = NTP_SYNC_RESULT_PARSE_FAILURE;
+		goto done;
+	}
 
-		if (syncOut != NULL)
-			*syncOut = sync;
+	if (memcmp(hdrTimes.originateBytes, req.txTimestampBytes, 8) != 0) {
+		msyslog(LOG_ERR,
+			"nts_do_authenticated_ntp_sync: response originate timestamp does not match request transmit timestamp");
+		outcome.result = NTP_SYNC_RESULT_AUTH_FAILURE;
+		goto done;
+	}
 
-		ok = 1;
-	} while (0);
+	times.t1 = req.requestUnixTime;
 
+	sync = nts_compute_ntp_offset_delay(times.t1,
+		hdrTimes.t2_receive,
+		hdrTimes.t3_transmit,
+		times.t4);
+
+	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: T1 client send    = %.9f", times.t1);
+	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: T2 server receive = %.9f", hdrTimes.t2_receive);
+	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: T3 server xmit    = %.9f", hdrTimes.t3_transmit);
+	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: T4 client recv    = %.9f", times.t4);
+
+	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: Offset (sec) = %.9f", sync.offsetSeconds);
+	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: Delay  (sec) = %.9f", sync.delaySeconds);
+	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: Offset (ms)  = %.6f", sync.offsetSeconds * 1000.0);
+	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: Delay  (ms)  = %.6f", sync.delaySeconds * 1000.0);
+
+	outcome.result = NTP_SYNC_RESULT_SUCCESS;
+	outcome.offsetSeconds = sync.offsetSeconds;
+	outcome.delaySeconds = sync.delaySeconds;
+	outcome.haveTiming = 1;
+
+done:
 	nts_request_build_result_free(&req);
 	nts_buf_free(&udpResponse, &udpResponseLen, &udpResponseCap);
 	nts_response_parsed_free(&parsed);
 	nts_buf_free(&associatedData, &associatedDataLen, &associatedDataCap);
 	nts_buf_free(&decryptedInner, &decryptedInnerLen, &decryptedInnerCap);
 
+	return outcome;
+}
+
+void nts_clear_runtime_session(NtsKeContext* ctx)
+{
+	if (ctx == NULL)
+		return;
+
+	nts_str_free(&ctx->ntsKeHost);
+	nts_str_free(&ctx->negotiatedNtpServer);
+	nts_str_free(&ctx->cookieFolder);
+
+	nts_buf_free(&ctx->c2sKey, &ctx->c2sKeyLen, &ctx->c2sKeyCap);
+	nts_buf_free(&ctx->s2cKey, &ctx->s2cKeyLen, &ctx->s2cKeyCap);
+
+	nts_cookie_array_free(&ctx->cookies,
+		&ctx->cookieLens,
+		&ctx->cookieCount,
+		&ctx->cookieCap);
+
+	ctx->negotiatedNtpPort = 123;
+	ctx->negotiatedAead = 0;
+}
+
+int nts_delete_session_from_sqlite(const char* host)
+{
+	char* dbPath;
+	sqlite3* db;
+	sqlite3_stmt* stmt;
+	int rc;
+	int ok;
+	static const char* sql =
+		"DELETE FROM nts_sessions WHERE host = ?;";
+
+	if (host == NULL || *host == '\0')
+		return 0;
+
+	dbPath = NULL;
+	db = NULL;
+	stmt = NULL;
+	ok = 0;
+
+	if (!nts_build_host_db_path(host, &dbPath))
+		return 0;
+
+	rc = sqlite3_open(dbPath, &db);
+	if (rc != SQLITE_OK) {
+		msyslog(LOG_ERR,
+			"nts_delete_session_from_sqlite: sqlite3_open failed: %s",
+			nts_sqlite_err(db));
+		if (db != NULL)
+			sqlite3_close(db);
+		free(dbPath);
+		return 0;
+	}
+
+	if (!nts_ensure_schema(db)) {
+		sqlite3_close(db);
+		free(dbPath);
+		return 0;
+	}
+
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		msyslog(LOG_ERR,
+			"nts_delete_session_from_sqlite: prepare failed: %s",
+			nts_sqlite_err(db));
+		goto done;
+	}
+
+	sqlite3_bind_text(stmt, 1, host, -1, SQLITE_TRANSIENT);
+
+	rc = sqlite3_step(stmt);
+	if (rc != SQLITE_DONE) {
+		msyslog(LOG_ERR,
+			"nts_delete_session_from_sqlite: step failed: %s",
+			nts_sqlite_err(db));
+		goto done;
+	}
+
+	ok = 1;
+
+done:
+	if (stmt != NULL)
+		sqlite3_finalize(stmt);
+	if (db != NULL)
+		sqlite3_close(db);
+	free(dbPath);
 	return ok;
+}
+
+NtsServiceSyncState nts_classify_sync_stability(const NtpSyncOutcome* o)
+{
+	double absOffsetMs;
+	double delayMs;
+
+	if (o == NULL)
+		return NTS_SERVICE_SYNC_FAILED;
+
+	if (o->result != NTP_SYNC_RESULT_SUCCESS || !o->haveTiming)
+		return NTS_SERVICE_SYNC_FAILED;
+
+	absOffsetMs = fabs(o->offsetSeconds * 1000.0);
+	delayMs = o->delaySeconds * 1000.0;
+
+	/*
+	 * Initial thresholds; tune later.
+	 */
+	if (absOffsetMs <= 250.0 && delayMs <= 3000.0)
+		return NTS_SERVICE_SYNC_STABLE;
+
+	return NTS_SERVICE_SYNC_UNSTABLE;
+}
+
+int nts_run_peer_sync(struct peer* peer)
+{
+	NtpNtsPeerContext* pctx;
+	NtsKeContext* ctx;
+	NtsStoredSession loaded;
+	char* dbPath;
+	int haveStoredSession;
+	int storedUsable;
+	int storedTooOld;
+	NtpSyncOutcome cachedOutcome;
+	NtpSyncOutcome freshOutcome;
+	NtsStoredSession updated;
+	NtsServiceSyncState state;
+
+	if (peer == NULL)
+		return NTS_SERVICE_SYNC_FAILED;
+
+	if (!nts_ctx_create(peer))
+		return NTS_SERVICE_SYNC_FAILED;
+
+	pctx = nts_get_peer_ctx(peer);
+	if (pctx == NULL)
+		return NTS_SERVICE_SYNC_FAILED;
+
+	ctx = &pctx->ke;
+
+	if (ctx->ntsKeHost == NULL || ctx->ntsKeHost[0] == '\0') {
+		msyslog(LOG_ERR,
+			"nts_run_peer_sync: ntsKeHost is empty");
+		return NTS_SERVICE_SYNC_FAILED;
+	}
+
+	nts_stored_session_init(&loaded);
+	dbPath = NULL;
+	ntp_sync_outcome_init(&cachedOutcome);
+	ntp_sync_outcome_init(&freshOutcome);
+	nts_stored_session_init(&updated);
+
+	haveStoredSession = nts_load_session_from_sqlite(ctx->ntsKeHost,
+		&loaded,
+		&dbPath);
+
+	storedUsable = haveStoredSession && nts_is_stored_session_usable(&loaded);
+	storedTooOld = storedUsable && nts_is_stored_session_too_old(&loaded);
+
+	if (storedUsable && !storedTooOld) {
+		if (!nts_copy_stored_session_to_runtime(&loaded, ctx)) {
+			msyslog(LOG_ERR,
+				"nts_run_peer_sync: failed to copy stored session to runtime");
+			state = NTS_SERVICE_SYNC_FAILED;
+			goto done;
+		}
+
+		msyslog(LOG_INFO,
+			"nts_run_peer_sync: loaded cached NTS session from %s",
+			(dbPath != NULL) ? dbPath : "(unknown)");
+
+		cachedOutcome = nts_do_authenticated_ntp_sync(ctx);
+
+		if (cachedOutcome.result == NTP_SYNC_RESULT_SUCCESS) {
+			if (nts_make_stored_session_from_runtime(ctx, &updated)) {
+				char* savedDbPath = NULL;
+				if (!nts_save_session_to_sqlite(&updated, &savedDbPath)) {
+					msyslog(LOG_WARNING,
+						"nts_run_peer_sync: authenticated NTP succeeded, but updating SQLite session failed");
+				}
+				free(savedDbPath);
+			}
+
+			state = nts_classify_sync_stability(&cachedOutcome);
+			goto done;
+		}
+
+		if (cachedOutcome.result == NTP_SYNC_RESULT_NETWORK_FAILURE) {
+			msyslog(LOG_WARNING,
+				"nts_run_peer_sync: cached authenticated NTP failed due to network; keeping cached session");
+			state = NTS_SERVICE_SYNC_FAILED;
+			goto done;
+		}
+
+		if (cachedOutcome.result == NTP_SYNC_RESULT_AUTH_FAILURE ||
+			cachedOutcome.result == NTP_SYNC_RESULT_PARSE_FAILURE) {
+			msyslog(LOG_WARNING,
+				"nts_run_peer_sync: cached session appears stale or invalid; discarding and renegotiating");
+
+			nts_delete_session_from_sqlite(ctx->ntsKeHost);
+			nts_clear_runtime_session(ctx);
+			if (!nts_str_set(&ctx->ntsKeHost, loaded.host))
+				if (!nts_str_set(&ctx->ntsKeHost, peer->hostname))
+					;
+		}
+		else {
+			msyslog(LOG_ERR,
+				"nts_run_peer_sync: authenticated NTP failed due to internal/local error");
+			state = NTS_SERVICE_SYNC_FAILED;
+			goto done;
+		}
+	}
+	else if (storedTooOld) {
+		msyslog(LOG_INFO,
+			"nts_run_peer_sync: cached NTS session is too old; forcing fresh NTS-KE");
+
+		nts_delete_session_from_sqlite(ctx->ntsKeHost);
+		nts_clear_runtime_session(ctx);
+		if (!nts_str_set(&ctx->ntsKeHost, loaded.host))
+			if (!nts_str_set(&ctx->ntsKeHost, peer->hostname))
+				;
+	}
+
+	msyslog(LOG_INFO,
+		"nts_run_peer_sync: no usable cached session; performing fresh NTS-KE");
+
+	if (!nts_refresh_session(ctx)) {
+		msyslog(LOG_ERR,
+			"nts_run_peer_sync: fresh NTS-KE failed");
+		state = NTS_SERVICE_SYNC_FAILED;
+		goto done;
+	}
+
+	nts_stored_session_free(&updated);
+	nts_stored_session_init(&updated);
+	if (nts_make_stored_session_from_runtime(ctx, &updated)) {
+		char* savedDbPath = NULL;
+		if (!nts_save_session_to_sqlite(&updated, &savedDbPath)) {
+			msyslog(LOG_WARNING,
+				"nts_run_peer_sync: fresh NTS-KE succeeded, but saving SQLite session failed");
+		}
+		free(savedDbPath);
+	}
+
+	freshOutcome = nts_do_authenticated_ntp_sync(ctx);
+	if (freshOutcome.result != NTP_SYNC_RESULT_SUCCESS) {
+		msyslog(LOG_ERR,
+			"nts_run_peer_sync: fresh authenticated NTP failed");
+		state = NTS_SERVICE_SYNC_FAILED;
+		goto done;
+	}
+
+	nts_stored_session_free(&updated);
+	nts_stored_session_init(&updated);
+	if (nts_make_stored_session_from_runtime(ctx, &updated)) {
+		char* savedDbPath = NULL;
+		if (!nts_save_session_to_sqlite(&updated, &savedDbPath)) {
+			msyslog(LOG_WARNING,
+				"nts_run_peer_sync: authenticated NTP succeeded, but updating SQLite session failed");
+		}
+		free(savedDbPath);
+	}
+
+	state = nts_classify_sync_stability(&freshOutcome);
+
+done:
+	nts_stored_session_free(&loaded);
+	nts_stored_session_free(&updated);
+	free(dbPath);
+	return state;
+}
+
+int nts_is_stored_session_too_old(const NtsStoredSession* s)
+{
+	time_t now;
+	time_t ageSeconds;
+
+	if (s == NULL)
+		return 1;
+
+	now = time(NULL);
+
+	if (s->updatedAt <= 0)
+		return 1;
+
+	ageSeconds = now - s->updatedAt;
+
+	/*
+	 * Hard expiry: older than 12 hours.
+	 */
+	if (ageSeconds > 12 * 60 * 60)
+		return 1;
+
+	/*
+	 * Softer expiry: older than 4 hours and low cookie pool.
+	 */
+	if (ageSeconds > 4 * 60 * 60 && s->cookieCount <= 2)
+		return 1;
+
+	return 0;
+}
+
+int nts_perform_nts_ke_handshake(NtsKeContext* ctx)
+{
+	static const uint8_t ntskeRequest[] = {
+		0x80, 0x01,  /* Critical, Record Type 1 */
+		0x00, 0x02,
+		0x00, 0x00,  /* NTPv4 */
+
+		0x80, 0x04,  /* Critical, Record Type 4 */
+		0x00, 0x02,
+		0x00, 0x0F,  /* AEAD_AES_SIV_CMAC_256 = 15 */
+
+		0x80, 0x00,  /* Critical, End of Message */
+		0x00, 0x00
+	};
+
+	uint8_t* response;
+	size_t responseLen;
+	size_t responseCap;
+	NtsKeParsed parsed;
+	int ok;
+
+	if (ctx == NULL)
+		return 0;
+
+	response = NULL;
+	responseLen = 0;
+	responseCap = 0;
+	nts_ke_parsed_init(&parsed);
+	ok = 0;
+
+	msyslog(LOG_INFO, "nts_perform_nts_ke_handshake: starting NTS-KE request");
+
+	do {
+		if (!nts_tls_send_encrypted(&ctx->tls, ntskeRequest, sizeof(ntskeRequest))) {
+			msyslog(LOG_ERR,
+				"nts_perform_nts_ke_handshake: failed to send NTS-KE request");
+			break;
+		}
+
+		msyslog(LOG_INFO,
+			"nts_perform_nts_ke_handshake: request sent, waiting for response");
+
+		if (!nts_tls_recv_encrypted(&ctx->tls, &response, &responseLen)) {
+			msyslog(LOG_ERR,
+				"nts_perform_nts_ke_handshake: failed to receive NTS-KE response");
+			break;
+		}
+
+		if (responseLen == 0) {
+			msyslog(LOG_ERR,
+				"nts_perform_nts_ke_handshake: empty NTS-KE response");
+			break;
+		}
+
+		msyslog(LOG_INFO,
+			"nts_perform_nts_ke_handshake: response received: %lu bytes",
+			(unsigned long)responseLen);
+
+		if (!nts_parse_nts_ke_response((const char*)response, responseLen, &parsed)) {
+			msyslog(LOG_ERR,
+				"nts_perform_nts_ke_handshake: failed to parse NTS-KE response");
+			break;
+		}
+
+		if (parsed.aeadCount == 0) {
+			msyslog(LOG_ERR,
+				"nts_perform_nts_ke_handshake: response contains no AEAD IDs");
+			break;
+		}
+
+		if (parsed.cookieCount == 0) {
+			msyslog(LOG_ERR,
+				"nts_perform_nts_ke_handshake: response contains no cookies");
+			break;
+		}
+
+		ctx->negotiatedAead = parsed.aeadIds[0];
+
+		nts_cookie_array_free(&ctx->cookies,
+			&ctx->cookieLens,
+			&ctx->cookieCount,
+			&ctx->cookieCap);
+
+		{
+			size_t i;
+			for (i = 0; i < parsed.cookieCount; i++) {
+				if (!nts_cookie_array_add(&ctx->cookies,
+					&ctx->cookieLens,
+					&ctx->cookieCount,
+					&ctx->cookieCap,
+					parsed.cookies[i],
+					parsed.cookieLens[i])) {
+					msyslog(LOG_ERR,
+						"nts_perform_nts_ke_handshake: failed to copy cookies");
+					goto done;
+				}
+			}
+		}
+
+		if (!nts_str_set(&ctx->negotiatedNtpServer,
+			(parsed.ntpServer != NULL && parsed.ntpServer[0] != '\0')
+			? parsed.ntpServer
+			: ctx->ntsKeHost)) {
+			msyslog(LOG_ERR,
+				"nts_perform_nts_ke_handshake: failed to store negotiated NTP server");
+			break;
+		}
+
+		ctx->negotiatedNtpPort = parsed.ntpPort;
+
+		msyslog(LOG_INFO,
+			"nts_perform_nts_ke_handshake: parsed successfully. AEAD=%u Cookies=%lu NTPPort=%u",
+			(unsigned)ctx->negotiatedAead,
+			(unsigned long)ctx->cookieCount,
+			(unsigned)ctx->negotiatedNtpPort);
+
+		if (!nts_export_keying_material(&ctx->tls,
+			ctx->negotiatedAead,
+			1,
+			&ctx->c2sKey,
+			&ctx->c2sKeyLen,
+			&ctx->c2sKeyCap)) {
+			msyslog(LOG_ERR,
+				"nts_perform_nts_ke_handshake: failed to export C2S key");
+			break;
+		}
+
+		if (!nts_export_keying_material(&ctx->tls,
+			ctx->negotiatedAead,
+			0,
+			&ctx->s2cKey,
+			&ctx->s2cKeyLen,
+			&ctx->s2cKeyCap)) {
+			msyslog(LOG_ERR,
+				"nts_perform_nts_ke_handshake: failed to export S2C key");
+			break;
+		}
+
+		msyslog(LOG_INFO,
+			"nts_perform_nts_ke_handshake: C2S key size=%lu S2C key size=%lu",
+			(unsigned long)ctx->c2sKeyLen,
+			(unsigned long)ctx->s2cKeyLen);
+
+		ok = 1;
+	} while (0);
+
+done:
+	nts_buf_free(&response, &responseLen, &responseCap);
+	nts_ke_parsed_free(&parsed);
+	return ok;
+}
+
+int
+nts_refresh_session(NtsKeContext* ctx)
+{
+	SOCKET s;
+	int ok;
+	char* savedHost;
+
+	if (ctx == NULL)
+		return 0;
+
+	if (ctx->ntsKeHost == NULL || ctx->ntsKeHost[0] == '\0') {
+		msyslog(LOG_ERR,
+			"nts_refresh_session: ntsKeHost is empty");
+		return 0;
+	}
+
+	savedHost = NULL;
+	if (!nts_str_set(&savedHost, ctx->ntsKeHost)) {
+		msyslog(LOG_ERR,
+			"nts_refresh_session: failed to preserve ntsKeHost");
+		return 0;
+	}
+
+	/*
+	 * Clear old negotiated/session material and TLS state.
+	 */
+	nts_ke_context_free(ctx);
+	nts_ke_context_init(ctx);
+
+	if (!nts_str_set(&ctx->ntsKeHost, savedHost)) {
+		msyslog(LOG_ERR,
+			"nts_refresh_session: failed to restore ntsKeHost");
+		nts_str_free(&savedHost);
+		return 0;
+	}
+	nts_str_free(&savedHost);
+
+	s = nts_connect_tcp(ctx->ntsKeHost, "4460");
+	if (s == INVALID_SOCKET) {
+		msyslog(LOG_ERR,
+			"nts_refresh_session: TCP connect to %s:4460 failed",
+			ctx->ntsKeHost);
+		return 0;
+	}
+
+	ctx->tls.sock = s;
+	ok = 0;
+
+	do {
+		if (!nts_perform_client_handshake(s, ctx->ntsKeHost, &ctx->tls)) {
+			msyslog(LOG_ERR,
+				"nts_refresh_session: TLS handshake failed");
+			break;
+		}
+
+		msyslog(LOG_INFO,
+			"nts_refresh_session: TLS handshake succeeded");
+
+		if (!nts_perform_nts_ke_handshake(ctx)) {
+			msyslog(LOG_ERR,
+				"nts_refresh_session: NTS-KE failed");
+			break;
+		}
+
+		if (ctx->negotiatedNtpServer == NULL ||
+			ctx->negotiatedNtpServer[0] == '\0') {
+			if (!nts_str_set(&ctx->negotiatedNtpServer,
+				ctx->ntsKeHost)) {
+				msyslog(LOG_ERR,
+					"nts_refresh_session: failed to default negotiatedNtpServer");
+				break;
+			}
+		}
+
+		if (ctx->negotiatedNtpPort == 0)
+			ctx->negotiatedNtpPort = 123;
+
+		if (ctx->negotiatedAead == 0 ||
+			ctx->c2sKey == NULL || ctx->c2sKeyLen == 0 ||
+			ctx->s2cKey == NULL || ctx->s2cKeyLen == 0 ||
+			ctx->cookies == NULL || ctx->cookieCount == 0) {
+			msyslog(LOG_ERR,
+				"nts_refresh_session: handshake finished but session material is incomplete");
+			break;
+		}
+
+		ok = 1;
+	} while (0);
+
+	tls_client_context_free(&ctx->tls);
+	tls_client_context_init(&ctx->tls);
+
+	return ok;
+}
+
+int
+nts_export_keying_material(TlsClientContext* tls,
+	uint16_t negotiatedAead,
+	int clientToServer,
+	uint8_t** outKey,
+	size_t* outKeyLen,
+	size_t* outKeyCap)
+{
+	size_t keyLen;
+	const char* label;
+	uint8_t contextValue[5];
+	SecPkgContext_KeyingMaterialInfo kmInfo;
+	SecPkgContext_KeyingMaterial km;
+	SECURITY_STATUS ss;
+
+	if (tls == NULL || outKey == NULL || outKeyLen == NULL || outKeyCap == NULL)
+		return 0;
+
+	keyLen = nts_aead_key_size(negotiatedAead);
+	if (keyLen == 0) {
+		msyslog(LOG_ERR,
+			"nts_export_keying_material: unsupported AEAD for exporter: %u",
+			(unsigned)negotiatedAead);
+		return 0;
+	}
+
+	/*
+	 * RFC 8915 exporter label for NTS.
+	 */
+	label = "EXPORTER-network-time-security";
+
+	/*
+	 * RFC 8915 NTPv4 context: 5 octets
+	 *   00 00 | AEAD_ID_BE | direction
+	 */
+	contextValue[0] = 0x00;
+	contextValue[1] = 0x00;
+	contextValue[2] = (uint8_t)((negotiatedAead >> 8) & 0xFF);
+	contextValue[3] = (uint8_t)(negotiatedAead & 0xFF);
+	contextValue[4] = clientToServer ? 0x00 : 0x01;
+
+	ZERO(kmInfo);
+	kmInfo.cbLabel = (WORD)(strlen(label) + 1);
+	kmInfo.pszLabel = (char*)label;
+	kmInfo.cbContextValue = (WORD)sizeof(contextValue);
+	kmInfo.pbContextValue = contextValue;
+	kmInfo.cbKeyingMaterial = (DWORD)keyLen;
+
+	ss = SetContextAttributesA(&tls->hCtx,
+		SECPKG_ATTR_KEYING_MATERIAL_INFO,
+		&kmInfo,
+		sizeof(kmInfo));
+	if (ss != SEC_E_OK) {
+		PrintSecError("SetContextAttributesA(SECPKG_ATTR_KEYING_MATERIAL_INFO)", ss);
+		return 0;
+	}
+
+	ZERO(km);
+	ss = QueryContextAttributesA(&tls->hCtx,
+		SECPKG_ATTR_KEYING_MATERIAL,
+		&km);
+	if (ss != SEC_E_OK) {
+		PrintSecError("QueryContextAttributesA(SECPKG_ATTR_KEYING_MATERIAL)", ss);
+		return 0;
+	}
+
+	if (km.cbKeyingMaterial != keyLen || km.pbKeyingMaterial == NULL) {
+		msyslog(LOG_ERR,
+			"nts_export_keying_material: unexpected exported keying material length: %lu expected %lu",
+			(unsigned long)km.cbKeyingMaterial,
+			(unsigned long)keyLen);
+		if (km.pbKeyingMaterial != NULL)
+			FreeContextBuffer(km.pbKeyingMaterial);
+		return 0;
+	}
+
+	if (!nts_buf_set(outKey,
+		outKeyLen,
+		outKeyCap,
+		(const uint8_t*)km.pbKeyingMaterial,
+		(size_t)km.cbKeyingMaterial)) {
+		FreeContextBuffer(km.pbKeyingMaterial);
+		return 0;
+	}
+
+	FreeContextBuffer(km.pbKeyingMaterial);
+	return 1;
 }

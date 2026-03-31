@@ -4357,7 +4357,8 @@ peerflag_bits(
 			break;
 
 		case T_Burst:
-			peerflags |= FLAG_BURST;
+			//peerflags |= FLAG_BURST;
+			peerflags |= FLAG_NTS;
 			break;
 
 		case T_Iburst:
