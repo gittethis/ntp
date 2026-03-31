@@ -127,6 +127,7 @@
 %token	<Integer>	T_Host
 %token	<Integer>	T_Huffpuff
 %token	<Integer>	T_Iburst
+%token	<Integer>	T_Nts
 %token	<Integer>	T_Ident
 %token	<Integer>	T_Ignore
 %token	<Integer>	T_Ignorehash
@@ -200,7 +201,6 @@
 %token	<Integer>	T_Ntp
 %token	<Integer>	T_Ntpport
 %token	<Integer>	T_NtpSignDsocket
-%token	<Integer>	T_Nts
 %token	<Integer>	T_Orphan
 %token	<Integer>	T_Orphanwait
 %token	<Integer>	T_PCEdigest
@@ -500,8 +500,8 @@ option_flag_keyword
 	:	T_Autokey
 	|	T_Burst
 	|	T_Iburst
-	|	T_Noselect
 	|	T_Nts
+	|	T_Noselect
 	|	T_Preempt
 	|	T_Prefer
 	|	T_True
@@ -1888,4 +1888,3 @@ int main(int argc, char *argv[])
 	return 0;
 }
 #endif
-

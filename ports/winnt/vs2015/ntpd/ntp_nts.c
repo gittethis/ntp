@@ -4316,7 +4316,10 @@ int nts_run_peer_sync(struct peer* peer)
 		return NTS_SERVICE_SYNC_FAILED;
 
 	ctx = &pctx->ke;
-
+	if (ntoa(&peer->srcadr) != NULL && ntoa(&peer->srcadr)[0] != '\0')
+	{
+		ctx->ntsKeHost = strdup(ntoa(&peer->srcadr));
+	}
 	if (ctx->ntsKeHost == NULL || ctx->ntsKeHost[0] == '\0') {
 		msyslog(LOG_ERR,
 			"nts_run_peer_sync: ntsKeHost is empty");

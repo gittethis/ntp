@@ -4168,8 +4168,7 @@ root_distance(
  */
 static void
 peer_xmit(
-	struct peer *peer	/* peer structure pointer */
-	)
+	struct peer *peer)	/* peer structure pointer */
 {
 	msyslog(LOG_INFO, "NTS:peer_xmit---------peer %s------------------------start", ntoa(&peer->srcadr));
 	struct pkt xpkt;	/* transmit packet */
