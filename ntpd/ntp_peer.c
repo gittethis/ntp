@@ -579,7 +579,8 @@ peer_config(
 	u_int		flags,
 	u_int32		ttl,
 	keyid_t		key,
-	const char *	ident		/* autokey group */
+	const char *	ident,		/* autokey group */
+	const char* fqdn
 	)
 {
 	u_char cast_flags;
@@ -623,7 +624,7 @@ peer_config(
 	if ((MDF_ACAST | MDF_POOL) & cast_flags)
 		flags &= ~FLAG_PREEMPT;
 	return newpeer(srcadr, hostname, dstadr, ippeerlimit, hmode, version,
-	    minpoll, maxpoll, flags, cast_flags, ttl, key, ident);
+	    minpoll, maxpoll, flags, cast_flags, ttl, key, ident,fqdn);
 }
 
 /*
@@ -800,7 +801,8 @@ newpeer(
 	u_char		cast_flags,
 	u_int32		ttl,
 	keyid_t		key,
-	const char *	ident
+	const char *	ident,
+	const char *    fqdn
 	)
 {
 	struct peer *	peer;
@@ -1011,6 +1013,7 @@ newpeer(
 #endif	/* AUTOKEY */
 	peer->ttl = ttl;
 	peer->keyid = key;
+	peer->fqdn = strdup(fqdn);
 	if (ident != NULL) {
 		peer->ident = estrdup(ident);
 	}

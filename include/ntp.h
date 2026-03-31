@@ -271,6 +271,7 @@ struct peer {
 	struct peer *ilink;	/* list of peers for interface */
 	sockaddr_u srcadr;	/* address of remote host */
 	char *	hostname;	/* if non-NULL, remote name */
+	char* fqdn;	/* if non-NULL, remote name */
 	struct addrinfo *addrs;	/* hostname query result */
 	struct addrinfo *ai;	/* position within addrs */
 	endpt *	dstadr;		/* local address */

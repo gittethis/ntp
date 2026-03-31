@@ -201,7 +201,7 @@ extern	void	peer_clr_stats	(void);
 extern	struct peer *peer_config(sockaddr_u *, const char *, endpt *,
 				 int, u_char, u_char, u_char, u_char,
 				 u_int, u_int32,
-				 keyid_t, const char *);
+				 keyid_t, const char*, const char *);
 extern	void	peer_reset	(struct peer *);
 extern	void	refresh_all_peerinterfaces(void);
 extern	void	unpeer		(struct peer *);

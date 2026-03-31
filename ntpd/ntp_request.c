@@ -1379,7 +1379,7 @@ do_conf(
 		if (peer_config(&peeraddr, NULL, NULL, -1,
 		    temp_cp.hmode, temp_cp.version, temp_cp.minpoll, 
 		    temp_cp.maxpoll, fl, temp_cp.ttl, temp_cp.keyid,
-		    NULL) == 0)
+		    NULL,NULL) == 0)
 		{
 			req_ack(srcadr, inter, inpkt, INFO_ERR_NODATA);
 			return;

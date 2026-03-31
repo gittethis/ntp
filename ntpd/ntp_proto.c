@@ -4170,7 +4170,7 @@ static void
 peer_xmit(
 	struct peer *peer)	/* peer structure pointer */
 {
-	msyslog(LOG_INFO, "NTS:peer_xmit---------peer %s------------------------start", ntoa(&peer->srcadr));
+	msyslog(LOG_INFO, "NTS:peer_xmit---------peer %s------------------------start", peer->fqdn);
 	struct pkt xpkt;	/* transmit packet */
 	size_t	sendlen, authlen;
 	keyid_t	xkeyid = 0;	/* transmit key ID */

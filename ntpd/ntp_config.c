@@ -4443,7 +4443,8 @@ config_peers(
 					FLAG_IBURST,
 					0,
 					0,
-					NULL);
+					NULL,
+					curr_peer->addr->address);
 		} else {
 			/* we have a hostname to resolve */
 # ifdef WORKER
@@ -4495,7 +4496,8 @@ config_peers(
 				peerflag_bits(curr_peer),
 				curr_peer->ttl,
 				curr_peer->peerkey,
-				curr_peer->group);
+				curr_peer->group,
+				curr_peer->addr->address);
 		/*
 		 * If we have a numeric address, we can safely
 		 * proceed in the mainline with it.  Otherwise, hand
@@ -4519,7 +4521,8 @@ config_peers(
 					peerflag_bits(curr_peer),
 					curr_peer->ttl,
 					curr_peer->peerkey,
-					curr_peer->group);
+					curr_peer->group,
+					curr_peer->addr->address);
 		} else {
 			/* we have a hostname to resolve */
 # ifdef WORKER
@@ -4631,7 +4634,8 @@ peer_name_resolved(
 				ctx->flags,
 				ctx->ttl,
 				ctx->keyid,
-				ctx->group);
+				ctx->group,
+				name);
 
 			if (ctx->was_initializing) {
 				initializing = FALSE;
