@@ -1,1 +1,0 @@
-D:\ntp\ports\winnt\vs2015\x64-tmp\Debug\ntpdate\ntpdate.vcxproj.CopyComplete

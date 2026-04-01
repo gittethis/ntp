@@ -528,17 +528,21 @@ tls_client_context_init(TlsClientContext* ctx)
 	if (ctx == NULL)
 		return;
 
+	ctx->hostUtf8 = NULL;
 	memset(ctx, 0, sizeof(*ctx));
 	ctx->sock = INVALID_SOCKET;
 }
 
-void
-tls_client_context_free(TlsClientContext* ctx)
+
+void tls_client_context_free(TlsClientContext* ctx)
 {
 	if (ctx == NULL)
 		return;
 
 	nts_charbuf_free(&ctx->encBuf, &ctx->encBufLen, &ctx->encBufCap);
+
+	free(ctx->hostUtf8);
+	ctx->hostUtf8 = NULL;
 
 	if (ctx->haveCtx) {
 		DeleteSecurityContext(&ctx->hCtx);
@@ -1169,6 +1173,13 @@ nts_perform_client_handshake(SOCKET s, const char* hostUtf8,TlsClientContext* tl
 	}
 
 	tls->haveCtx = 1;
+	tls->ctxReq = ctxReq;
+	if (!nts_str_set(&tls->hostUtf8, hostUtf8)) {
+		msyslog(LOG_ERR,
+			"nts_perform_client_handshake: failed to store host name");
+		return 0;
+	}
+
 
 	if (outBuffers[0].pvBuffer != NULL && outBuffers[0].cbBuffer > 0) {
 		if (!nts_tls_send_all(tls->sock,
@@ -1327,6 +1338,179 @@ nts_perform_client_handshake(SOCKET s, const char* hostUtf8,TlsClientContext* tl
 				"nts_perform_client_handshake: ALPN query failed: 0x%08lx",
 				(unsigned long)qss);
 		}
+	}
+
+	return 1;
+}
+
+
+static int nts_tls_handle_renegotiate(TlsClientContext* tls)
+{
+	TimeStamp tsExpiry;
+	SECURITY_STATUS ss;
+	DWORD ctxReq;
+	DWORD ctxAttr;
+	SecBuffer outBuffers[2];
+	SecBufferDesc outDesc;
+
+	if (tls == NULL || tls->hostUtf8 == NULL)
+		return 0;
+
+	ZERO(tsExpiry);
+
+	ctxReq =
+		ISC_REQ_SEQUENCE_DETECT |
+		ISC_REQ_REPLAY_DETECT |
+		ISC_REQ_CONFIDENTIALITY |
+		ISC_REQ_EXTENDED_ERROR |
+		ISC_REQ_ALLOCATE_MEMORY |
+		ISC_REQ_STREAM;
+
+	ctxAttr = 0;
+
+	ZERO(outBuffers);
+	ZERO(outDesc);
+	outDesc.ulVersion = SECBUFFER_VERSION;
+	outDesc.cBuffers = 2;
+	outDesc.pBuffers = outBuffers;
+
+	for (;;) {
+		SecBuffer inBuffers[2];
+		SecBufferDesc inDesc;
+
+		ZERO(inBuffers);
+		ZERO(inDesc);
+
+		inDesc.ulVersion = SECBUFFER_VERSION;
+		inDesc.cBuffers = 2;
+		inDesc.pBuffers = inBuffers;
+
+		inBuffers[0].BufferType = SECBUFFER_TOKEN;
+		inBuffers[0].pvBuffer = tls->encBuf;
+		inBuffers[0].cbBuffer = (ULONG)tls->encBufLen;
+
+		inBuffers[1].BufferType = SECBUFFER_EMPTY;
+		inBuffers[1].pvBuffer = NULL;
+		inBuffers[1].cbBuffer = 0;
+
+		outBuffers[0].BufferType = SECBUFFER_TOKEN;
+		outBuffers[0].pvBuffer = NULL;
+		outBuffers[0].cbBuffer = 0;
+
+		outBuffers[1].BufferType = SECBUFFER_ALERT;
+		outBuffers[1].pvBuffer = NULL;
+		outBuffers[1].cbBuffer = 0;
+
+		ss = InitializeSecurityContextA(&tls->hCred,
+			&tls->hCtx,
+			(SEC_CHAR*)tls->hostUtf8,
+			tls->ctxReq,
+			0,
+			0,
+			&inDesc,
+			0,
+			&tls->hCtx,
+			&outDesc,
+			&ctxAttr,
+			NULL);
+
+		if (outBuffers[0].pvBuffer != NULL && outBuffers[0].cbBuffer > 0) {
+			if (!nts_tls_send_all(tls->sock,
+				outBuffers[0].pvBuffer,
+				outBuffers[0].cbBuffer)) {
+				FreeContextBuffer(outBuffers[0].pvBuffer);
+				outBuffers[0].pvBuffer = NULL;
+				return 0;
+			}
+			FreeContextBuffer(outBuffers[0].pvBuffer);
+			outBuffers[0].pvBuffer = NULL;
+		}
+
+		if (ss == SEC_E_INCOMPLETE_MESSAGE) {
+			char netBuf[8192];
+			int got;
+
+			got = recv(tls->sock, netBuf, (int)sizeof(netBuf), 0);
+			if (got == SOCKET_ERROR) {
+				msyslog(LOG_ERR,
+					"nts_tls_handle_renegotiate: recv failed: %d",
+					WSAGetLastError());
+				return 0;
+			}
+			if (got == 0) {
+				msyslog(LOG_ERR,
+					"nts_tls_handle_renegotiate: peer closed during renegotiation");
+				return 0;
+			}
+
+			if (!nts_charbuf_append(&tls->encBuf,
+				&tls->encBufLen,
+				&tls->encBufCap,
+				netBuf,
+				(size_t)got)) {
+				msyslog(LOG_ERR,
+					"nts_tls_handle_renegotiate: failed to append input");
+				return 0;
+			}
+
+			continue;
+		}
+
+		if (inBuffers[1].BufferType == SECBUFFER_EXTRA) {
+			size_t extra = inBuffers[1].cbBuffer;
+			memmove(tls->encBuf,
+				((char*)inBuffers[0].pvBuffer) + (tls->encBufLen - extra),
+				extra);
+			tls->encBufLen = extra;
+		}
+		else {
+			tls->encBufLen = 0;
+		}
+
+		if (ss == SEC_I_CONTINUE_NEEDED) {
+			char netBuf[8192];
+			int got;
+
+			got = recv(tls->sock, netBuf, (int)sizeof(netBuf), 0);
+			if (got == SOCKET_ERROR) {
+				msyslog(LOG_ERR,
+					"nts_tls_handle_renegotiate: recv failed: %d",
+					WSAGetLastError());
+				return 0;
+			}
+			if (got == 0) {
+				msyslog(LOG_ERR,
+					"nts_tls_handle_renegotiate: peer closed during renegotiation");
+				return 0;
+			}
+
+			if (!nts_charbuf_append(&tls->encBuf,
+				&tls->encBufLen,
+				&tls->encBufCap,
+				netBuf,
+				(size_t)got)) {
+				msyslog(LOG_ERR,
+					"nts_tls_handle_renegotiate: failed to append input");
+				return 0;
+			}
+
+			continue;
+		}
+
+		if (ss != SEC_E_OK) {
+			PrintSecError("InitializeSecurityContextA (renegotiate)", ss);
+			return 0;
+		}
+
+		break;
+	}
+
+	ss = QueryContextAttributesA(&tls->hCtx,
+		SECPKG_ATTR_STREAM_SIZES,
+		&tls->sizes);
+	if (ss != SEC_E_OK) {
+		PrintSecError("QueryContextAttributesA (STREAM_SIZES renegotiate)", ss);
+		return 0;
 	}
 
 	return 1;
@@ -1636,7 +1820,7 @@ nts_parse_nts_ke_response(const char* response, size_t responseLen,NtsKeParsed* 
 
 		switch (recordType) {
 
-		case 0:		/* End of Message */
+		case 0:     /* End of Message */
 			if (bodyLen != 0) {
 				msyslog(LOG_ERR,
 					"nts_parse_nts_ke_response: End record with nonzero body");
@@ -1644,7 +1828,14 @@ nts_parse_nts_ke_response(const char* response, size_t responseLen,NtsKeParsed* 
 			}
 			out->sawEnd = 1;
 			pos += bodyLen;
-			return (pos == len);
+
+			if (pos < len) {
+				msyslog(LOG_INFO,
+					"nts_parse_nts_ke_response: ignoring %lu trailing bytes after End record",
+					(unsigned long)(len - pos));
+			}
+
+			return 1;
 
 		case 4:		/* AEAD Algorithm Negotiation */
 		{
@@ -1858,6 +2049,102 @@ nts_tls_send_encrypted(TlsClientContext* tls, const void* data, size_t len)
 
 	return 1;
 }
+/*
+int nts_ke_message_complete(const uint8_t* buf, size_t len)
+{
+	size_t pos = 0;
+
+	if (buf == NULL)
+		return 0;
+
+	while (pos + 4 <= len) {
+		uint8_t b0;
+		uint16_t recordType;
+		uint16_t bodyLen;
+
+		b0 = buf[pos + 0];
+		recordType = (uint16_t)(((uint16_t)(b0 & 0x7F) << 8) |
+			(uint16_t)buf[pos + 1]);
+		bodyLen = (uint16_t)(((uint16_t)buf[pos + 2] << 8) |
+			(uint16_t)buf[pos + 3]);
+
+		pos += 4;
+
+		if (pos + bodyLen > len)
+			return 0;
+
+		pos += bodyLen;
+
+		if (recordType == 0) {
+			// Match parser behavior: End record must terminate message 
+			return (pos == len);
+		}
+	}
+
+	return 0;
+}*/
+
+
+
+
+int nts_ke_message_complete(const uint8_t* buf, size_t len)
+{
+	size_t pos = 0;
+
+	if (buf == NULL)
+		return 0;
+
+	while (pos + 4 <= len) {
+		uint16_t recordType;
+		uint16_t bodyLen;
+
+		recordType = (uint16_t)(((uint16_t)(buf[pos + 0] & 0x7F) << 8) |
+			(uint16_t)buf[pos + 1]);
+		bodyLen = (uint16_t)(((uint16_t)buf[pos + 2] << 8) |
+			(uint16_t)buf[pos + 3]);
+
+		pos += 4;
+
+		if (pos + bodyLen > len)
+			return 0;
+
+		pos += bodyLen;
+
+		if (recordType == 0)
+			return 1;
+	}
+
+	return 0;
+}
+
+void log_hex_prefix(const char* tag, const uint8_t* p, size_t n)
+{
+	char line[256];
+	size_t i, m;
+	char* q = line;
+
+	line[0] = '\0';
+
+	if (p == NULL || n == 0) {
+		msyslog(LOG_INFO, "%s: <empty>", tag);
+		return;
+	}
+
+	m = (n < 32) ? n : 32;
+	for (i = 0; i < m; i++) {
+		int wrote = snprintf(q, sizeof(line) - (size_t)(q - line), "%02x ", p[i]);
+		if (wrote < 0 || (size_t)wrote >= sizeof(line) - (size_t)(q - line))
+			break;
+		q += wrote;
+	}
+
+	msyslog(LOG_INFO, "%s (%lu bytes shown of %lu): %s",
+		tag,
+		(unsigned long)m,
+		(unsigned long)n,
+		line);
+}
+
 
 int
 nts_tls_recv_encrypted(TlsClientContext* tls,uint8_t** outPlain,size_t* outPlainLen)
@@ -1895,10 +2182,7 @@ nts_tls_recv_encrypted(TlsClientContext* tls,uint8_t** outPlain,size_t* outPlain
 
 			ss = DecryptMessage(&tls->hCtx, &desc, 0, NULL);
 
-			if (ss == SEC_E_OK ||
-				ss == SEC_I_RENEGOTIATE ||
-				ss == SEC_I_CONTEXT_EXPIRED) {
-
+			if (ss == SEC_E_OK) {
 				dataPtr = NULL;
 				dataLen = 0;
 				extraPtr = NULL;
@@ -1916,19 +2200,23 @@ nts_tls_recv_encrypted(TlsClientContext* tls,uint8_t** outPlain,size_t* outPlain
 				}
 
 				if (dataPtr != NULL && dataLen > 0) {
-					size_t oldLen = *outPlainLen;
-					uint8_t* tmp;
-
-					tmp = (uint8_t*)realloc(*outPlain, oldLen + (size_t)dataLen);
-					if (tmp == NULL) {
+					if (looks_like_tls_record((const uint8_t*)dataPtr, (size_t)dataLen)) {
 						msyslog(LOG_ERR,
-							"nts_tls_recv_encrypted: realloc failed");
+							"nts_tls_recv_encrypted: decrypted data still looks like TLS record");
 						return 0;
 					}
 
-					*outPlain = tmp;
-					memcpy((*outPlain) + oldLen, dataPtr, (size_t)dataLen);
-					*outPlainLen = oldLen + (size_t)dataLen;
+					{
+						size_t oldLen = *outPlainLen;
+						uint8_t* tmp = (uint8_t*)realloc(*outPlain, oldLen + (size_t)dataLen);
+						if (tmp == NULL) {
+							msyslog(LOG_ERR, "nts_tls_recv_encrypted: realloc failed");
+							return 0;
+						}
+						*outPlain = tmp;
+						memcpy((*outPlain) + oldLen, dataPtr, (size_t)dataLen);
+						*outPlainLen = oldLen + (size_t)dataLen;
+					}
 				}
 
 				if (extraPtr != NULL && extraLen > 0) {
@@ -1939,25 +2227,24 @@ nts_tls_recv_encrypted(TlsClientContext* tls,uint8_t** outPlain,size_t* outPlain
 					tls->encBufLen = 0;
 				}
 
-				if (ss == SEC_I_CONTEXT_EXPIRED) {
-					/*
-					 * clean TLS close_notify received
-					 */
-					return (*outPlainLen > 0);
-				}
-
-				if (*outPlainLen > 0)
+				if (nts_ke_message_complete(*outPlain, *outPlainLen))
 					return 1;
+			}
 
-				/*
-				 * No plaintext yet; continue if renegotiation
-				 * or status left us with no app data.
-				 */
+			else if (ss == SEC_I_RENEGOTIATE) {
+				if (!nts_tls_handle_renegotiate(tls)) {
+					msyslog(LOG_ERR,
+						"nts_tls_recv_encrypted: renegotiation handling failed");
+					return 0;
+				}
+				continue;
+			}
+
+			else if (ss == SEC_I_CONTEXT_EXPIRED || ss == SEC_E_CONTEXT_EXPIRED) {
+				return nts_ke_message_complete(*outPlain, *outPlainLen);
 			}
 			else if (ss == SEC_E_INCOMPLETE_MESSAGE) {
-				/*
-				 * Need more ciphertext from socket.
-				 */
+				/* need more ciphertext */
 			}
 			else {
 				PrintSecError("DecryptMessage", ss);
@@ -1996,6 +2283,21 @@ nts_tls_recv_encrypted(TlsClientContext* tls,uint8_t** outPlain,size_t* outPlain
 			}
 		}
 	}
+}
+
+
+
+
+static int looks_like_tls_record(const uint8_t* p, size_t n)
+{
+	if (p == NULL || n < 5)
+		return 0;
+
+	if ((p[0] == 0x14 || p[0] == 0x15 || p[0] == 0x16 || p[0] == 0x17) &&
+		p[1] == 0x03)
+		return 1;
+
+	return 0;
 }
 
 int

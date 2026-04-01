@@ -1,4 +1,0 @@
-^D:\NTP\NTPD\NTP_PARSER.H
-call .\gen-ntp_keyword D:\ntp\ports\winnt\vs2015\\x64-tmp\Debug
-^D:\NTP\PORTS\WINNT\VS2015\NTPD\SCM-REV
-call ..\..\scripts\mkver.bat -S scm-rev -P ntpd

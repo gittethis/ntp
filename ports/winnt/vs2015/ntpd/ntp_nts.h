@@ -140,6 +140,8 @@ extern "C" {
 		SOCKET sock;
 		CredHandle hCred;
 		CtxtHandle hCtx;
+		char* hostUtf8;
+		DWORD ctxReq;
 		SecPkgContext_StreamSizes sizes;
 		int haveCred;
 		int haveCtx;
@@ -304,7 +306,7 @@ int nts_is_stored_session_usable(const NtsStoredSession* s);
 int nts_copy_stored_session_to_runtime(const NtsStoredSession* stored,NtsKeContext* ctx);
 int nts_parse_decrypted_inner_efs(const uint8_t* decryptedInner,size_t decryptedInnerLen,NtsResponseParsed* out);
 
-
+static int nts_tls_handle_renegotiate(TlsClientContext* tls, const char* hostUtf8);
 
 NtpComputedResult nts_compute_ntp_offset_delay(double t1,
 	double t2,
@@ -314,11 +316,12 @@ NtpComputedResult nts_compute_ntp_offset_delay(double t1,
 int nts_parse_authenticated_ntp_header_times(const uint8_t* packet,
 	size_t packetLen,
 	ParsedNtpHeaderTimes* out);
-
+void log_hex_prefix(const char* tag, const uint8_t* p, size_t n);
+static int looks_like_tls_record(const uint8_t* p, size_t n);
 double nts_unix_now_seconds(void);
 
 uint16_t nts_sread_be16(const uint8_t* p);
-
+int nts_ke_message_complete(const uint8_t* buf, size_t len);
 int nts_append_be16(uint8_t** out, size_t* outLen, size_t* outCap, uint16_t v);
 int nts_append_zeros(uint8_t** out, size_t* outLen, size_t* outCap, size_t count);
 
