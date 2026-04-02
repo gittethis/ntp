@@ -1,0 +1,2158 @@
+From cf0a74acae8816e48d4eabf5797d1ecf6ff37e25 Mon Sep 17 00:00:00 2001
+From: Dave Hart <hart@ntp.org>
+Date: Mon, 2 Sep 2024 17:01:22 +0200
+Subject: [PATCH] Pull changes by Dave Hart <hart@ntp.org> after 4.2.8p18
+
+[Bug 3943] 4.2.8p18 ignores link-local IPv6 server.
+[Bug 3942] DECL_SYSCALL detection does not work on illumos.
+[Bug 3940] ntpd 4.2.8p18 regression from p17 for digests longer than 160
+           bits.
+[Bug 3933] Restrict structure misaligned on SPARC64.
+[Bug 3932] Ignore teredo interfaces in Windows ntpd.
+[Bug 3931] Libopts is not respecting VPATH.
+[Bug 3930] Windows build mkver.bat races itself.
+[Bug 3929] 4.2.8p18 -Werror -Wincompatible-pointer-types breaks w/md5.h.
+           Wrap MD5Update() calls for varying declarations.
+[Bug 3928] ntpd 4.2.8p18 crash when bringing up net interface fails.
+[Bug 3927] 4.2.8p18 configure reverses -L and -l in $LIBS for OpenSSL test.
+           Reported by Brian Utterback.
+[Bug 3926] pthread_detach() not detected with gcc 14, clang 16.
+           Use pthread_t arg in openldap-thread-check.m4.
+[Bug 3925] ntpd on Windows 8 and later doesn't set CMOS clock at shutdown.
+[Bug 3924] Windows ntpd gives up on DNS too quickly at OS startup.
+           Increase max. DNS retry interval from 32 to 1024 seconds.
+[Bug 3877] 4.2.8p16 client rejects server response with zero ppoll.
+
+Display SSL shared library version number in human form.
+Reorder restrict_u layout to improve alignment on all platforms.
+Correct match_restrict[46]_addr() logic expiring temporary restrictions.
+Rename is_ip_address() to sau_from_string() to better reflect use.
+Remove include/safecast.h
+Fix bug in m4sh macro NTP_FACILITYNAMES that meant detection always failed.
+---
+ ChangeLog                                     |  38 +++++-
+ configure.ac                                  |   9 +-
+ include/Makefile.am                           |   1 -
+ include/lib_strbuf.h                          |   2 +-
+ include/ntp.h                                 |  10 +-
+ include/ntp_md5.h                             |  73 +++++++-----
+ include/ntp_stdlib.h                          |   2 +-
+ include/ntp_types.h                           |  38 +++---
+ include/safecast.h                            |  34 ------
+ libntp/a_md5encrypt.c                         |  40 ++++---
+ libntp/authreadkeys.c                         |   4 +-
+ libntp/is_ip_address.c                        |  17 ++-
+ libntp/ntp_crypto_rnd.c                       |   6 +-
+ libntp/ntp_intres.c                           | 108 ++++++++++--------
+ libntp/ntp_lineedit.c                         |   1 -
+ libntp/ntp_worker.c                           |   2 +-
+ libntp/ssl_init.c                             |  28 +++--
+ libntp/strdup.c                               |   2 +-
+ libntp/work_fork.c                            |   2 +-
+ libntp/work_thread.c                          |   2 +-
+ ntpd/ntp_config.c                             |  42 +++----
+ ntpd/ntp_control.c                            |  18 +--
+ ntpd/ntp_crypto.c                             |   2 +-
+ ntpd/ntp_io.c                                 |  25 ++--
+ ntpd/ntp_proto.c                              |  36 +++---
+ ntpd/ntp_restrict.c                           |  27 +++--
+ ntpd/ntpd.c                                   |   9 +-
+ ntpdc/ntpdc.c                                 |   4 +-
+ ntpq/ntpq.c                                   |  11 +-
+ ports/winnt/include/ntservice.h               |   2 +-
+ ports/winnt/ntpd/nt_clockstuff.c              |  24 ++--
+ ports/winnt/ntpd/ntservice.c                  |  28 ++---
+ ports/winnt/scripts/mkver.bat                 |  78 +++++++------
+ ports/winnt/vs2013/libntp/libntp.vcxproj      |   1 -
+ .../vs2013/libntp/libntp.vcxproj.filters      |   3 -
+ ports/winnt/vs2015/libntp/libntp.vcxproj      |   1 -
+ .../vs2015/libntp/libntp.vcxproj.filters      |   3 -
+ sntp/configure.ac                             |   2 +-
+ sntp/crypto.c                                 |  12 +-
+ sntp/crypto.h                                 |   2 +-
+ sntp/libopts/Makefile.am                      |   2 +-
+ sntp/libopts/m4/libopts.m4                    |   3 +-
+ sntp/m4/ntp_facilitynames.m4                  |   2 +-
+ sntp/m4/ntp_openssl.m4                        |  38 +++---
+ sntp/m4/openldap-thread-check.m4              |   6 +-
+ sntp/tests/keyFile.c                          |   4 +-
+ sntp/tests/packetProcessing.c                 |   2 +-
+ tests/libntp/authkeys.c                       |   2 +-
+ tests/libntp/data/ntp.keys                    |   2 +
+ tests/libntp/digests.c                        |  42 ++++++-
+ tests/libntp/run-digests.c                    |   2 +
+ tests/libntp/ssl_init.c                       |   6 +-
+ 52 files changed, 484 insertions(+), 376 deletions(-)
+ delete mode 100644 include/safecast.h
+
+diff --git a/ChangeLog b/ChangeLog
+index f4a196a..9124bba 100644
+--- a/ChangeLog
++++ b/ChangeLog
+@@ -1,4 +1,40 @@
+ ---
++
++* [Bug 3943] 4.2.8p18 ignores link-local IPv6 server. <hart@ntp.org>
++* [Bug 3942] DECL_SYSCALL detection does not work on illumos. <hart@ntp.org>
++* [Bug 3940] ntpd 4.2.8p18 regression from p17 for digests longer than 160
++             bits. <hart@ntp.org>
++* [Bug 3933] Restrict structure misaligned on SPARC64. <hart@ntp.org>
++* [Bug 3932] Ignore teredo interfaces in Windows ntpd. <hart@ntp.org>
++* [Bug 3931] Libopts is not respecting VPATH. <hart@ntp.org>
++* [Bug 3930] Windows build mkver.bat races itself. <hart@ntp.org>
++* [Bug 3929] 4.2.8p18 -Werror -Wincompatible-pointer-types breaks w/md5.h.
++             Wrap MD5Update() calls for varying declarations.  <hart@ntp.org>
++* [Bug 3928] ntpd 4.2.8p18 crash when bringing up net interface fails.
++             <hart@ntp.org>
++* [Bug 3927] 4.2.8p18 configure reverses -L and -l in $LIBS for OpenSSL test.
++             Reported by Brian Utterback. <hart@ntp.org>
++* [Bug 3926] pthread_detach() not detected with gcc 14, clang 16.
++             Use pthread_t arg in openldap-thread-check.m4. <hart@ntp.org>
++* [Bug 3925] ntpd on Windows 8 and later doesn't set CMOS clock at shutdown.
++             <hart@ntp.org>
++* [Bug 3924] Windows ntpd gives up on DNS too quickly at OS startup.
++             Increase max. DNS retry interval from 32 to 1024 seconds.
++             <hart@ntp.org>
++* [Bug 3877] 4.2.8p16 client rejects server response with zero ppoll.
++             <hart@ntp.org>
++* Display SSL shared library version number in human form. <hart@ntp.org>          
++* Reorder restrict_u layout to improve alignment on all platforms.
++  <hart@ntp.org>
++* Correct match_restrict[46]_addr() logic expiring temporary restrictions.
++  <hart@ntp.org>
++* Rename is_ip_address() to sau_from_string() to better reflect use.
++  <hart@ntp.org>
++* Remove include/safecast.h <hart@ntp.org>
++* Fix bug in m4sh macro NTP_FACILITYNAMES that meant detection always failed.
++  <hart@ntp.org>
++
++---
+ (4.2.8p18) 2024/05/25 Released by Harlan Stenn <stenn@ntp.org>
+ 
+ * [Bug 3918] Tweak openssl header/library handling. <stenn@ntp.org>
+@@ -85,7 +121,7 @@
+ * Fix build on older FreeBSD lacking sys/procctl.h. <hart@ntp.org>
+ * Disable [Bug 3627] workaround on newer FreeBSD which has the kernel fix
+   that makes it unnecessary, re-enabling ASLR stack gap. <hart@ntp.org>
+-* Use NONEMPTY_COMPILATION_UNIT in more conditionally-compiled files.
++* Use NONEMPTY_TRANSLATION_UNIT in more conditionally-compiled files.
+ * Remove useless pointer to Windows Help from system error messages.
+ * Avoid newlines within Windows error messages. <hart@ntp.org>
+ * Ensure unique association IDs if wrapped. <hart@ntp.org>
+diff --git a/configure.ac b/configure.ac
+index aef7053..d19573d 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -35,7 +35,7 @@ AC_PRESERVE_HELP_ORDER
+ # the date YYYYMMDD optionally with -HHMM if there is more than one
+ # bump in a day.
+ 
+-ntp_configure_cache_version=20240218
++ntp_configure_cache_version=20240811
+ 
+ # When the cache version of config.cache and configure do not
+ # match, NTP_CACHEVERSION will flush the cache.
+@@ -283,7 +283,7 @@ case "$host" in
+     ;;
+ esac
+ 
+-AC_CHECK_HEADERS([bstring.h sys/procctl.h])
++AC_CHECK_HEADERS([bstring.h sys/procctl.h sys/syscall.h])
+ AC_CHECK_HEADER(
+     [dns_sd.h],
+     [AC_SEARCH_LIBS(
+@@ -1102,6 +1102,9 @@ AC_CACHE_CHECK(
+ 		#ifdef HAVE_UNISTD_H
+ 		# include <unistd.h>
+ 		#endif
++		#ifdef HAVE_SYS_SYSCALL_H
++		# include <sys/syscall.h>
++		#endif
+ 	    ]],
+ 	    [[
+ 		extern int syscall (int, ...);
+@@ -1113,7 +1116,7 @@ AC_CACHE_CHECK(
+ )
+ case "$ntp_cv_decl_syscall" in
+  yes)
+-    AC_DEFINE([DECL_SYSCALL], [1], [Declare syscall()?])
++    AC_DEFINE([DECL_SYSCALL], [1], [Need to declare syscall()?])
+ esac
+ 
+ case "$host" in
+diff --git a/include/Makefile.am b/include/Makefile.am
+index b661ca6..f02e688 100644
+--- a/include/Makefile.am
++++ b/include/Makefile.am
+@@ -71,7 +71,6 @@ noinst_HEADERS =	\
+ 	recvbuff.h	\
+ 	refclock_atom.h	\
+ 	refidsmear.h	\
+-	safecast.h	\
+ 	ssl_applink.c	\
+ 	timepps-SCO.h	\
+ 	timepps-Solaris.h	\
+diff --git a/include/lib_strbuf.h b/include/lib_strbuf.h
+index 89da450..6a8b3e5 100644
+--- a/include/lib_strbuf.h
++++ b/include/lib_strbuf.h
+@@ -22,7 +22,7 @@ extern	void	init_lib(void);
+  * no need to churn the history with a mechanical switch away from
+  * LIB_GETBUF(buf).
+  */
+-extern	char* lib_getbuf(void);
++extern	char * lib_getbuf(void);
+ 
+ #define	LIB_GETBUF(bufp)		\
+ 	do {				\
+diff --git a/include/ntp.h b/include/ntp.h
+index 7406a79..b8fd1b0 100644
+--- a/include/ntp.h
++++ b/include/ntp.h
+@@ -857,18 +857,18 @@ struct restrict_u_tag {
+ 	restrict_u *	link;		/* link to next entry */
+ 	u_int32		count;		/* number of packets matched */
+ 	u_int32		expire;		/* valid until current_time */
+-	u_short		rflags;		/* restrict (accesslist) flags */
+ 	u_int32		mflags;		/* match flags */
++	u_short		rflags;		/* restrict (accesslist) flags */
+ 	short		ippeerlimit;	/* limit of associations matching */
+ 	union {				/* variant starting here */
+ 		res_addr4 v4;
+ 		res_addr6 v6;
+ 	} u;
+ };
+-#define	V4_SIZEOF_RESTRICT_U	(offsetof(restrict_u, u)	\
+-				 + sizeof(res_addr4))
+-#define	V6_SIZEOF_RESTRICT_U	(offsetof(restrict_u, u)	\
+-				 + sizeof(res_addr6))
++#define	V4_SIZEOF_RESTRICT_U	ALIGNED_SIZE(  offsetof(restrict_u, u)	\
++					     + sizeof(res_addr4))
++#define	V6_SIZEOF_RESTRICT_U	ALIGNED_SIZE(  offsetof(restrict_u, u)	\
++					     + sizeof(res_addr6))
+ 
+ /* restrictions for (4) a given address */
+ typedef struct r4addr_tag	r4addr;
+diff --git a/include/ntp_md5.h b/include/ntp_md5.h
+index 22caff3..dbe701e 100644
+--- a/include/ntp_md5.h
++++ b/include/ntp_md5.h
+@@ -1,56 +1,73 @@
+ /*
+  * ntp_md5.h: deal with md5.h headers
+  *
+- * Use the system MD5 if available, otherwise libisc's.
++ * Use the system MD5 if available, otherwise use libisc's.
++ * Yes, MD5 has been deprecated.  Nevertheless, ntpd IPv6 refid
++ * calculation uses MD5 to derive a 32-bit refid from a 128-bit
++ * IPv6 address.  This use is retained to avoid breaking loop
++ * detection that would be triggered by such change, and because
++ * we are not depending on cryptographic strength for such use.
+  */
+ #ifndef NTP_MD5_H
+ #define NTP_MD5_H
+ 
+ /* Use the system MD5 or fall back on libisc's */
+-# if defined HAVE_MD5_H && defined HAVE_MD5INIT
+-#  include <md5.h>
+-# else
+-#  include "isc/md5.h"
+-   typedef isc_md5_t		MD5_CTX;
+-#  define MD5_DIGEST_LENGTH	ISC_MD5_DIGESTLENGTH
+-#  define MD5Init(c)		isc_md5_init(c)
+-#  define MD5Update(c, p, s)	isc_md5_update(c, (const void *)p, s)
+-#  define MD5Final(d, c)	isc_md5_final((c), (d))	/* swapped */
+-# endif
+-
+-# define KEY_TYPE_MD5			NID_md5
++#if defined HAVE_MD5_H && defined HAVE_MD5INIT
++# include <md5.h>
++# define ntp_md5_init(c)		MD5Init(c)
++# define ntp_md5_update(c, p, s)	MD5Update(c, (const void *)(p), s)
++# define ntp_md5_final(d, c)		MD5Final(d, c)
++#else
++# include "isc/md5.h"
++typedef isc_md5_t			MD5_CTX;
++# define MD5_DIGEST_LENGTH		ISC_MD5_DIGESTLENGTH
++# define ntp_md5_init(c)		isc_md5_init(c)
++# define ntp_md5_update(c, p, s)	isc_md5_update(c, (const void *)(p), s)
++# define ntp_md5_final(d, c)		isc_md5_final((c), (d))	/* swapped */
++#endif
+ 
+ #ifdef OPENSSL
+ # include <openssl/evp.h>
+ # include "libssl_compat.h"
+ # ifdef HAVE_OPENSSL_CMAC_H
+ #  include <openssl/cmac.h>
+-#  define CMAC                  "AES128CMAC"
+-#  define AES_128_KEY_SIZE      16
+-# endif /*HAVE_OPENSSL_CMAC_H*/
++#  define CMAC			"AES128CMAC"
++#  define AES_128_KEY_SIZE	16
++# endif
+ #else	/* !OPENSSL follows */
+ /*
+- * Provide OpenSSL-alike MD5 API if we're not using OpenSSL
++ * Provide OpenSSL-alike MD5 API if we're not using OpenSSL.  Most of this
++ * is used only by sntp when building it --without-crypto.
+  */
+ 
+-  typedef MD5_CTX			EVP_MD_CTX;
++typedef MD5_CTX				EVP_MD_CTX;
+ 
+ # define NID_md5			4	/* from openssl/objects.h */
+ # define EVP_MAX_MD_SIZE		MD5_DIGEST_LENGTH
++
++/*
++ * The following is used only by sntp configured --without-crypto as ntpd
++ * now uses explicit MD5 functions for MD5 uses which remain even where MD5
++ * is unavailable in OpenSSL, such as FIPS OpenSSL.  Note that FIPS may be
++ * available in the build environment but not at runtime, as is the case
++ * with packaged NTP binaries.
++ * The remaining uses of MD5 are IPv6 refids and mode 6 nonces.  ntpd does
++ * go through OpenSSL when using MD5 for symmetric authentication.
++ */
+ # define EVP_MD_CTX_free(c)		free(c)
+ # define EVP_MD_CTX_new()		calloc(1, sizeof(MD5_CTX))
+ # define EVP_get_digestbynid(t)		NULL
+ # define EVP_md5()			NULL
+ # define EVP_MD_CTX_init(c)
+ # define EVP_MD_CTX_set_flags(c, f)
+-# define EVP_DigestInit(c, dt)		(MD5Init(c), 1)
+-# define EVP_DigestInit_ex(c, dt, i)	(MD5Init(c), 1)
+-# define EVP_DigestUpdate(c, p, s)	MD5Update(c, (const void *)(p), \
+-						  s)
+-# define EVP_DigestFinal(c, d, pdl)	\
+-	do {				\
+-		MD5Final((d), (c));	\
+-		*(pdl) = MD5_LENGTH;	\
+-	} while (0)
+-# endif	/* !OPENSSL */
++# define EVP_DigestInit(c, dt)		(ntp_md5_init(c), 1)
++# define EVP_DigestUpdate(c, p, s)	ntp_md5_update(c, p, s)
++# define EVP_DigestFinal(c, d, pdl)		\
++	do {					\
++		ntp_md5_final((d), (c));	\
++		*(pdl) = MD5_LENGTH;		\
++	} while (FALSE)
++
++#endif	/* OPENSSL */
++
+ #endif	/* NTP_MD5_H */
+diff --git a/include/ntp_stdlib.h b/include/ntp_stdlib.h
+index 6f667fb..9531cc8 100644
+--- a/include/ntp_stdlib.h
++++ b/include/ntp_stdlib.h
+@@ -168,7 +168,7 @@ extern	int	atouint		(const char *, u_long *);
+ extern	int	hextoint	(const char *, u_long *);
+ extern	const char *	humanlogtime	(void);
+ extern	const char *	humantime	(time_t);
+-extern int	is_ip_address	(const char *, u_short, sockaddr_u *);
++extern int	sau_from_string	(const char *, u_short, sockaddr_u *);
+ extern	char *	mfptoa		(u_int32, u_int32, short);
+ extern	char *	mfptoms		(u_int32, u_int32, short);
+ extern	const char * modetoa	(size_t);
+diff --git a/include/ntp_types.h b/include/ntp_types.h
+index 6553f01..2eb9a48 100644
+--- a/include/ntp_types.h
++++ b/include/ntp_types.h
+@@ -234,25 +234,33 @@ typedef u_int32 tstamp_t;	/* NTP seconds timestamp */
+  * easy to do portably, as the maximum alignment required is not
+  * exposed.  Use the size of a union of the types known to represent the
+  * strictest alignment on some platform.
++ * ALIGNED_SIZE() assumes sizeof(max_alignment) is a power of two.
+  */
+ typedef union max_alignment_tag {
+-	double		d;
++	double	d;
++	long	l;
++	void *	vp;
++#ifdef HAVE_INT64
++	int64	i64;
++#endif
+ } max_alignment;
+ 
+-#define MAXALIGN		sizeof(max_alignment)
+-#define ALIGN_UNITS(sz)		(((sz) + MAXALIGN - 1) / MAXALIGN)
+-#define ALIGNED_SIZE(sz)	(MAXALIGN * ALIGN_UNITS(sz))
+-#define INC_ALIGNED_PTR(b, m)	((void *)aligned_ptr((void *)(b), m))
+-
+-static inline
+-max_alignment *
+-aligned_ptr(
+-	max_alignment *	base,
+-	size_t		minsize
+-	)
+-{
+-	return base + ALIGN_UNITS((minsize < 1) ? 1 : minsize);
+-}
++#define MAXALIGN		(sizeof(max_alignment))
++#define ALIGNMASK		(MAXALIGN - 1)
++#define ALIGNED_SIZE(sz)	(((sz) + ALIGNMASK) & ~ALIGNMASK)
++#define INCR_PTR(p, sz)		((void *)((char *)(p) + (sz)))
++
++/*
++ * There are cases where we would get "cast increases required alignment"
++ * when in fact it doesn't, and we know it doesn't.  An example is struct
++ * addrinfo.ai_addr, which is declared as a sockaddr * but often is the
++ * more-strictly-aligned sockaddr_in6 *.  Only when it is clear the
++ * alignment requirement is not really increasing, use QUIET_ALIGN_WARN().
++ * In addition to quieting the warning, it also unfortunately defeats 
++ * compiler type checking.
++ */
++
++#define QUIET_ALIGN_WARN(p)	((void *)(p))
+ 
+ /*
+  * On Unix struct sock_timeval is equivalent to struct timeval.
+diff --git a/include/safecast.h b/include/safecast.h
+deleted file mode 100644
+index 9300463..0000000
+--- a/include/safecast.h
++++ /dev/null
+@@ -1,34 +0,0 @@
+-#ifndef SAFECAST_H
+-#define SAFECAST_H
+-
+-#include <limits.h>
+-static inline int size2int_chk(size_t v)
+-{
+-	if (v > INT_MAX)
+-		abort();
+-	return (int)(v);
+-}
+-
+-static inline int size2int_sat(size_t v)
+-{
+-	return (v > INT_MAX) ? INT_MAX : (int)v;
+-}
+-
+-/* Compilers can emit warning about increased alignment requirements
+- * when casting pointers. The impact is tricky: on machines where
+- * alignment is just a performance issue (x86,x64,...) this might just
+- * cause a performance penalty. On others, an address error can occur
+- * and the process dies...
+- *
+- * Still, there are many cases where the pointer arithmetic and the
+- * buffer alignment make sure this does not happen. OTOH, the compiler
+- * doesn't know this and still emits warnings.
+- *
+- * The following cast macros are going through void pointers to tell
+- * the compiler that there is no alignment requirement to watch.
+- */
+-#define UA_PTR(ptype,pval) ((ptype *)(void*)(pval))
+-#define UAC_PTR(ptype,pval) ((const ptype *)(const void*)(pval))
+-#define UAV_PTR(ptype,pval) ((volatile ptype *)(volatile void*)(pval))
+-
+-#endif
+diff --git a/libntp/a_md5encrypt.c b/libntp/a_md5encrypt.c
+index a571405..ebc67e7 100644
+--- a/libntp/a_md5encrypt.c
++++ b/libntp/a_md5encrypt.c
+@@ -56,7 +56,7 @@ get_md_ctx(
+ 	static MD5_CTX	md5_ctx;
+ 
+ 	DEBUG_INSIST(NID_md5 == nid);
+-	MD5Init(&md5_ctx);
++	ntp_md5_init(&md5_ctx);
+ 
+ 	return &md5_ctx;
+ #else
+@@ -171,10 +171,10 @@ make_mac(
+ 		if (digest->len < MD5_LENGTH) {
+ 			msyslog(LOG_ERR, "%s", "MAC encrypt: MAC md5 buf too small.");
+ 		} else {
+-			MD5Init(ctx);
+-			MD5Update(ctx, (const void *)key->buf, key->len);
+-			MD5Update(ctx, (const void *)msg->buf, msg->len);
+-			MD5Final(digest->buf, ctx);
++			ntp_md5_init(ctx);
++			ntp_md5_update(ctx, key->buf, key->len);
++			ntp_md5_update(ctx, msg->buf, msg->len);
++			ntp_md5_final(digest->buf, ctx);
+ 			retlen = MD5_LENGTH;
+ 		}
+ 	} else {
+@@ -208,11 +208,20 @@ MD5authencrypt(
+ 	size_t	dlen;
+ 
+ 	dlen = make_mac(&digb, type, &keyb, &msgb);
+-	if (0 == dlen) {
+-		return 0;
++	/*
++	 * If the digest is longer than the 20 octets truncate it.  NTPv4
++	 * MACs consist of a 4-octet key ID and a digest, total up to 24
++	 * octets.  See RFC 7822 7.5.1.3 and 7.5.1.4.
++	 * Use of a digest algorithm which produces more than 20 octets
++	 * provides increased difficulty to forge even when truncated.
++	 * The fleeting lifetime of an individual packet's MAC makes offline
++	 * attack difficult.  The basic NTP packet is 48 octets, so it is
++	 * not obvious that a digest of more than 20 octets is warranted.
++	 */
++	if (dlen > MAX_MDG_LEN) {
++		dlen = MAX_MDG_LEN;
+ 	}
+-	memcpy((u_char *)pkt + length + KEY_MAC_LEN, digest,
+-	       min(dlen, MAX_MDG_LEN));
++	memcpy((u_char *)pkt + length + KEY_MAC_LEN, digest, dlen);
+ 	return (dlen + KEY_MAC_LEN);
+ }
+ 
+@@ -240,7 +249,12 @@ MD5authdecrypt(
+ 	size_t	dlen = 0;
+ 
+ 	dlen = make_mac(&digb, type, &keyb, &msgb);
+-	if (0 == dlen || size != dlen + KEY_MAC_LEN) {
++
++	/* If the digest is longer than 20 octets truncate. */
++	if (dlen > MAX_MDG_LEN) {
++		dlen = MAX_MDG_LEN;
++	}
++	if (size != (size_t)dlen + KEY_MAC_LEN) {
+ 		msyslog(LOG_ERR,
+ 			"MAC decrypt: MAC length error: %u not %u for key %u",
+ 			(u_int)size, (u_int)(dlen + KEY_MAC_LEN), keyno);
+@@ -279,9 +293,9 @@ addr2refid(sockaddr_u *addr)
+ 		return (NSRCADR(addr));
+ 	}
+ 	/* MD5 is not used for authentication here. */
+-	MD5Init(&md5_ctx);
+-	MD5Update(&md5_ctx, (void *)&SOCK_ADDR6(addr), sizeof(SOCK_ADDR6(addr)));
+-	MD5Final(u.digest, &md5_ctx);
++	ntp_md5_init(&md5_ctx);
++	ntp_md5_update(&md5_ctx, &SOCK_ADDR6(addr), sizeof(SOCK_ADDR6(addr)));
++	ntp_md5_final(u.digest, &md5_ctx);
+ #ifdef WORDS_BIGENDIAN
+ 	u.addr_refid = BYTESWAP32(u.addr_refid);
+ #endif
+diff --git a/libntp/authreadkeys.c b/libntp/authreadkeys.c
+index e4aee72..808a949 100644
+--- a/libntp/authreadkeys.c
++++ b/libntp/authreadkeys.c
+@@ -240,7 +240,7 @@ authreadkeys(
+ 				  keyno);
+ 			keytype = 0;
+ 		} else {
+-			keytype = KEY_TYPE_MD5;
++			keytype = NID_md5;
+ 		}
+ #endif	/* !OPENSSL */
+ 
+@@ -326,7 +326,7 @@ authreadkeys(
+ 					snbits = UINT_MAX;
+ 				}
+ 
+-				if (is_ip_address(tp, AF_UNSPEC, &addr)) {
++				if (sau_from_string(tp, AF_UNSPEC, &addr)) {
+ 					/* Make sure that snbits is valid for addr */
+ 				    if ((snbits < UINT_MAX) &&
+ 					( (IS_IPV4(&addr) && snbits > 32) ||
+diff --git a/libntp/is_ip_address.c b/libntp/is_ip_address.c
+index d36984c..6148f57 100644
+--- a/libntp/is_ip_address.c
++++ b/libntp/is_ip_address.c
+@@ -1,5 +1,5 @@
+ /*
+- * is_ip_address
++ * sau_from_string
+  *
+  */
+ 
+@@ -9,7 +9,6 @@
+ 
+ #include "ntp_assert.h"
+ #include "ntp_stdlib.h"
+-#include "safecast.h"
+ 
+ /* Don't include ISC's version of IPv6 variables and structures */
+ #define ISC_IPV6_H 1
+@@ -18,13 +17,11 @@
+ 
+ 
+ /*
+- * Code to tell if we have an IP address
+- * If we have then return the sockaddr structure
+- * and set the return value
+- * see the bind9/getaddresses.c for details
++ * sau_from_string() - sockaddr_u from IP address string
++ * Formerly named is_ip_address()
+  */
+ int
+-is_ip_address(
++sau_from_string(
+ 	const char *	host,
+ 	u_short		af,
+ 	sockaddr_u *	addr
+@@ -37,8 +34,8 @@ is_ip_address(
+ 	char tmpbuf[128];
+ 	char *pch;
+ 
+-	REQUIRE(host != NULL);
+-	REQUIRE(addr != NULL);
++	DEBUG_REQUIRE(host != NULL);
++	DEBUG_REQUIRE(addr != NULL);
+ 
+ 	ZERO_SOCK(addr);
+ 
+@@ -74,7 +71,7 @@ is_ip_address(
+ 			hints.ai_flags |= AI_NUMERICHOST;
+ 			if (getaddrinfo(tmpbuf, NULL, &hints, &result) == 0) {
+ 				AF(addr) = AF_INET6;
+-				resaddr6 = UA_PTR(struct sockaddr_in6, result->ai_addr);
++				resaddr6 = QUIET_ALIGN_WARN(result->ai_addr);
+ 				SET_ADDR6N(addr, resaddr6->sin6_addr);
+ 				SET_SCOPE(addr, resaddr6->sin6_scope_id);
+ 
+diff --git a/libntp/ntp_crypto_rnd.c b/libntp/ntp_crypto_rnd.c
+index 5fe7382..4607151 100644
+--- a/libntp/ntp_crypto_rnd.c
++++ b/libntp/ntp_crypto_rnd.c
+@@ -12,11 +12,12 @@
+ #ifdef HAVE_UNISTD_H
+ # include <unistd.h>
+ #endif
++#include <limits.h>
+ #include <stdio.h>
+ 
++#include <ntp_assert.h>
+ #include <ntp_stdlib.h>
+ #include <ntp_random.h>
+-#include "safecast.h"
+ 
+ #ifdef USE_OPENSSL_CRYPTO_RAND
+ #include <openssl/err.h>
+@@ -96,7 +97,8 @@ ntp_crypto_random_buf(
+ 		return -1;
+ 
+ #if defined(USE_OPENSSL_CRYPTO_RAND)
+-	if (1 != RAND_bytes(buf, size2int_chk(nbytes))) {
++	REQUIRE(nbytes <= INT_MAX);
++	if (1 != RAND_bytes(buf, (int)nbytes)) {
+ 		unsigned long err;
+ 		char *err_str;
+ 
+diff --git a/libntp/ntp_intres.c b/libntp/ntp_intres.c
+index 2954614..4119895 100644
+--- a/libntp/ntp_intres.c
++++ b/libntp/ntp_intres.c
+@@ -201,8 +201,7 @@ static	dnsworker_ctx *	get_worker_context(blocking_child *, u_int);
+ static	void		scheduled_sleep(time_t, time_t,
+ 					dnsworker_ctx *);
+ static	void		manage_dns_retry_interval(time_t *, time_t *,
+-						  int *, time_t *,
+-						  int/*BOOL*/);
++						  int *, time_t *);
+ static	int		should_retry_dns(int, int);
+ #ifdef HAVE_RES_INIT
+ static	void		reload_resolv_conf(dnsworker_ctx *);
+@@ -244,12 +243,12 @@ getaddrinfo_sometime_ex(
+ 	size_t			servsize;
+ 	time_t			now;
+ 	
+-	REQUIRE(NULL != node);
++	DEBUG_REQUIRE(NULL != node);
+ 	if (NULL != hints) {
+-		REQUIRE(0 == hints->ai_addrlen);
+-		REQUIRE(NULL == hints->ai_addr);
+-		REQUIRE(NULL == hints->ai_canonname);
+-		REQUIRE(NULL == hints->ai_next);
++		DEBUG_REQUIRE(0 == hints->ai_addrlen);
++		DEBUG_REQUIRE(NULL == hints->ai_addr);
++		DEBUG_REQUIRE(NULL == hints->ai_canonname);
++		DEBUG_REQUIRE(NULL == hints->ai_next);
+ 	}
+ 
+ 	idx = get_dnschild_ctx();
+@@ -379,8 +378,8 @@ blocking_getaddrinfo(
+ 
+ 	/*
+ 	 * Our response consists of a header, followed by ai_count 
+-	 * addrinfo structs followed by ai_count sockaddr_storage 
+-	 * structs followed by the canonical names.
++	 * addrinfo structs followed by ai_count sockaddr_u structs
++	 * followed by the canonical names.
+ 	 */
+ 	gai_resp->octets = sizeof(*gai_resp)
+ 			    + gai_resp->ai_count
+@@ -482,7 +481,7 @@ getaddrinfo_sometime_complete(
+ 	char *			service;
+ 	char *			canon_start;
+ 	time_t			time_now;
+-	int			again, noerr;
++	int			again;
+ 	int			af;
+ 	const char *		fam_spec;
+ 	int			i;
+@@ -510,22 +509,19 @@ getaddrinfo_sometime_complete(
+ 				  gai_req->dns_idx, humantime(time_now)));
+ 		}
+ 	} else {
+-		noerr = !!(gai_req->qflags & GAIR_F_IGNDNSERR);
+-		again = noerr || should_retry_dns(
+-					gai_resp->retcode, gai_resp->gai_errno);
+-		/*
+-		 * exponential backoff of DNS retries to 64s
+-		 */
++		again =    !!(gai_req->qflags & GAIR_F_IGNDNSERR)
++			|| should_retry_dns(gai_resp->retcode,
++					    gai_resp->gai_errno);
+ 		if (gai_req->retry > 0 && again) {
+ 			/* log the first retry only */
+-			if (INITIAL_DNS_RETRY == gai_req->retry)
++			if (INITIAL_DNS_RETRY == gai_req->retry) {
+ 				NLOG(NLOG_SYSINFO) {
+ 					af = gai_req->hints.ai_family;
+ 					fam_spec = (AF_INET6 == af)
+-						       ? " (AAAA)"
+-						       : (AF_INET == af)
+-							     ? " (A)"
+-							     : "";
++						? " (AAAA)"
++						: (AF_INET == af)
++						? " (A)"
++						: "";
+ #ifdef EAI_SYSTEM
+ 					if (EAI_SYSTEM == gai_resp->retcode) {
+ 						errno = gai_resp->gai_errno;
+@@ -535,27 +531,29 @@ getaddrinfo_sometime_complete(
+ 							gai_resp->gai_errno);
+ 					} else
+ #endif
++					{
+ 						msyslog(LOG_INFO,
+ 							"retrying DNS %s%s: %s (%d)",
+ 							node, fam_spec,
+ 							gai_strerror(gai_resp->retcode),
+ 							gai_resp->retcode);
++					}
+ 				}
++			}
+ 			manage_dns_retry_interval(
+ 				&gai_req->scheduled, &gai_req->earliest,
+-				&gai_req->retry, &child_ctx->next_dns_timeslot,
+-				noerr);
++				&gai_req->retry, &child_ctx->next_dns_timeslot);
+ 			if (!queue_blocking_request(
+ 					BLOCKING_GETADDRINFO,
+ 					gai_req,
+ 					gai_req->octets,
+ 					&getaddrinfo_sometime_complete,
+-					gai_req))
++					gai_req)) {
+ 				return;
+-			else
++			} else {
+ 				msyslog(LOG_ERR,
+-					"unable to retry hostname %s",
+-					node);
++					"unable to retry hostname %s", node);
++			}
+ 		}
+ 	}
+ 
+@@ -839,8 +837,8 @@ getnameinfo_sometime_complete(
+ 		 */
+ 		if (gni_req->retry > 0)
+ 			manage_dns_retry_interval(&gni_req->scheduled,
+-			    &gni_req->earliest, &gni_req->retry,
+-						  &child_ctx->next_dns_timeslot, FALSE);
++				&gni_req->earliest, &gni_req->retry,
++				&child_ctx->next_dns_timeslot);
+ 
+ 		if (gni_req->retry > 0 && again) {
+ 			if (!queue_blocking_request(
+@@ -1047,32 +1045,24 @@ manage_dns_retry_interval(
+ 	time_t *	pscheduled,
+ 	time_t *	pwhen,
+ 	int *		pretry,
+-	time_t *	pnext_timeslot,
+-	int		forever
++	time_t *	pnext_timeslot
+ 	)
+ {
+ 	time_t	now;
+ 	time_t	when;
+ 	int	retry;
+-	int	retmax;
+ 		
+ 	now = time(NULL);
+ 	retry = *pretry;
+ 	when = max(now + retry, *pnext_timeslot);
+ 	*pnext_timeslot = when;
+ 
+-	/* this exponential backoff is slower than doubling up: The
+-	 * sequence goes 2-3-4-6-8-12-16-24-32... and the upper limit is
+-	 * 64 seconds for things that should not repeat forever, and
+-	 * 1024 when repeated forever.
++	/*
++	 * Increase retry slowly. The sequence is:
++	 * 1-2-3-4-5-6-7-8-10-12-15-18-22-27-33...1024.
+ 	 */
+-	retmax = forever ? 1024 : 64;
+-	retry <<= 1;
+-	if (retry & (retry - 1))
+-		retry &= (retry - 1);
+-	else
+-		retry -= (retry >> 2);
+-	retry = min(retmax, retry);
++	retry = (retry * 5) / 4;
++	retry = min3(retry, *pretry + 1, 1024);
+ 
+ 	*pscheduled = now;
+ 	*pwhen = when;
+@@ -1084,7 +1074,7 @@ manage_dns_retry_interval(
+  * and getnameinfo_sometime_complete which implements ntpd's DNS retry
+  * policy.
+  */
+-static int
++static int/*BOOL*/
+ should_retry_dns(
+ 	int	rescode,
+ 	int	res_errno
+@@ -1113,9 +1103,33 @@ should_retry_dns(
+ 		eai_again_seen = 1;		/* [Bug 1178] */
+ 		break;
+ 
+-	case EAI_NONAME:
+-#if defined(EAI_NODATA) && (EAI_NODATA != EAI_NONAME)
++	/*
++	 * Windows 10 returns a permanent failure (WSANO_DATA) when there
++	 * is an A or AAAA record available but no local address is up yet
++	 * which might be able to communicate with the requested address.
++	 * This is the documented behavior for Windows Vista and later when
++	 * AI_ADDRCONFIG is used, but happens on Windows 10 even without
++	 * AI_ADDRCONFIG.  This can cause ntpd to give up on resolving
++	 * hostnames before a local address comes up during OS boot due
++	 * to devices not yet up or DHCP not having yet completed.  To
++	 * avoid this, always retry queries on Windows until the system
++	 * has been up for 10 minutes.  GetTickCount() returns the number
++	 * of milliseconds since boot, wrapping after 49.7 days.
++	 */
++#if defined(SYS_WINNT) &&  (EAI_NODATA == EAI_NONAME)
++#undef EAI_NODATA	 /* encrusted WS2tcpip.h idiocy */
++#define EAI_NODATA WSANO_DATA
++#endif
++
++#ifdef EAI_NODATA
+ 	case EAI_NODATA:
++#endif
++	case EAI_NONAME:
++#ifdef SYS_WINNT
++		if (GetTickCount() < 10 * SECSPERMIN * 1000) {
++			again = 1;	/* https://bugs.ntp.org/3924 */
++			break;
++		}
+ #endif
+ 		again = !eai_again_seen;	/* [Bug 1178] */
+ 		break;
+@@ -1144,5 +1158,5 @@ should_retry_dns(
+ }
+ 
+ #else	/* !WORKER follows */
+-int ntp_intres_nonempty_compilation_unit;
++NONEMPTY_TRANSLATION_UNIT
+ #endif
+diff --git a/libntp/ntp_lineedit.c b/libntp/ntp_lineedit.c
+index ebd456a..02d871c 100644
+--- a/libntp/ntp_lineedit.c
++++ b/libntp/ntp_lineedit.c
+@@ -29,7 +29,6 @@
+ #include "ntp.h"
+ #include "ntp_stdlib.h"
+ #include "ntp_lineedit.h"
+-#include "safecast.h"
+ 
+ #define MAXEDITLINE	512
+ 
+diff --git a/libntp/ntp_worker.c b/libntp/ntp_worker.c
+index d1d09c0..b6644a3 100644
+--- a/libntp/ntp_worker.c
++++ b/libntp/ntp_worker.c
+@@ -364,5 +364,5 @@ worker_idle_timer_fired(void)
+ 
+ 
+ #else	/* !WORKER follows */
+-int ntp_worker_nonempty_compilation_unit;
++NONEMPTY_TRANSLATION_UNIT
+ #endif
+diff --git a/libntp/ssl_init.c b/libntp/ssl_init.c
+index 6de8a0b..2bf17b3 100644
+--- a/libntp/ssl_init.c
++++ b/libntp/ssl_init.c
+@@ -24,6 +24,11 @@
+ #  define CMAC		"AES128CMAC"
+ # endif /*HAVE_OPENSSL_CMAC_H*/
+ 
++/* Break apart OpenSSL version number */
++#define SSLV_MAJOR(vn)	(((vn) & 0xf0000000) >> 28)
++#define SSLV_MINOR(vn)	(((vn) & 0x0ff00000) >> 20)
++#define SSLV_PATCH(vn)	(((vn) & 0x00000ff0) >> 4)
++
+ EVP_MD_CTX *digest_ctx;
+ 
+ 
+@@ -62,16 +67,19 @@ ssl_init(void)
+ void
+ ssl_check_version(void)
+ {
+-	u_long	v;
+-	char *  buf;
+-
+-	v = OpenSSL_version_num();
+-	if ((v ^ OPENSSL_VERSION_NUMBER) & ~0xff0L) {
+-		LIB_GETBUF(buf);
+-		snprintf(buf, LIB_BUFLENGTH, 
+-			 "OpenSSL version mismatch."
+-			 "Built against %lx, you have %lx\n",
+-			 (u_long)OPENSSL_VERSION_NUMBER, v);
++	const u_long	bv = OPENSSL_VERSION_NUMBER;
++	u_long		rv = OpenSSL_version_num();
++	char *		buf;
++
++	if (   SSLV_MAJOR(bv) != SSLV_MAJOR(rv)
++	    || SSLV_MINOR(bv) != SSLV_MINOR(rv)) {
++
++		buf = lib_getbuf();
++		snprintf(buf, LIB_BUFLENGTH,
++			"Using libcrypto %lu.%lu.%lu,"
++			" built for %lu.%lu.%lu.\n",
++			SSLV_MAJOR(rv), SSLV_MINOR(rv), SSLV_PATCH(rv),
++			SSLV_MAJOR(bv), SSLV_MINOR(bv), SSLV_PATCH(bv));
+ 		msyslog(LOG_WARNING, "%s", buf);
+ 		fputs(buf, stderr);
+ 	}
+diff --git a/libntp/strdup.c b/libntp/strdup.c
+index 8af9ff8..1c781bb 100644
+--- a/libntp/strdup.c
++++ b/libntp/strdup.c
+@@ -51,5 +51,5 @@ size_t strnlen(const char *s, size_t n)
+ #endif
+ 
+ #ifdef STRDUP_EMPTY_UNIT
+-int strdup_c_nonempty_compilation_unit;
++NONEMPTY_TRANSLATION_UNIT
+ #endif
+diff --git a/libntp/work_fork.c b/libntp/work_fork.c
+index 1dd9e13..aec3b7c 100644
+--- a/libntp/work_fork.c
++++ b/libntp/work_fork.c
+@@ -613,5 +613,5 @@ void worker_global_lock(int inOrOut)
+ }
+ 
+ #else	/* !WORK_FORK follows */
+-char work_fork_nonempty_compilation_unit;
++NONEMPTY_TRANSLATION_UNIT
+ #endif
+diff --git a/libntp/work_thread.c b/libntp/work_thread.c
+index 0d15c6e..f41973e 100644
+--- a/libntp/work_thread.c
++++ b/libntp/work_thread.c
+@@ -947,5 +947,5 @@ cleanup_after_child(
+ 
+ 
+ #else	/* !WORK_THREAD follows */
+-char work_thread_nonempty_compilation_unit;
++NONEMPTY_TRANSLATION_UNIT
+ #endif
+diff --git a/ntpd/ntp_config.c b/ntpd/ntp_config.c
+index 701f5b5..a7f811e 100644
+--- a/ntpd/ntp_config.c
++++ b/ntpd/ntp_config.c
+@@ -3380,7 +3380,7 @@ config_nic_rules(
+ 			pchSlash = strchr(if_name, '/');
+ 			if (pchSlash != NULL)
+ 				*pchSlash = '\0';
+-			if (is_ip_address(if_name, AF_UNSPEC, &addr)) {
++			if (sau_from_string(if_name, AF_UNSPEC, &addr)) {
+ 				match_type = MATCH_IFADDR;
+ 				if (pchSlash != NULL
+ 				    && 1 == sscanf(pchSlash + 1, "%d",
+@@ -4421,8 +4421,8 @@ config_peers(
+ 		 * Note that if we're told to add the peer here, we
+ 		 * do that regardless of ippeerlimit.
+ 		 */
+-		if (is_ip_address(*cmdline_servers, AF_UNSPEC,
+-				  &peeraddr)) {
++		if (sau_from_string(*cmdline_servers, AF_UNSPEC,
++				    &peeraddr)) {
+ 
+ 			SET_PORT(&peeraddr, NTP_PORT);
+ 			if (is_sane_resolved_address(&peeraddr,
+@@ -4497,8 +4497,9 @@ config_peers(
+ 		 * proceed in the mainline with it.  Otherwise, hand
+ 		 * the hostname off to the blocking child.
+ 		 */
+-		} else if (is_ip_address(curr_peer->addr->address,
+-				  curr_peer->addr->type, &peeraddr)) {
++		} else if (sau_from_string(curr_peer->addr->address,
++					   curr_peer->addr->type, 
++					   &peeraddr)) {
+ 
+ 			SET_PORT(&peeraddr, NTP_PORT);
+ 			if (is_sane_resolved_address(&peeraddr,
+@@ -4574,18 +4575,22 @@ peer_name_resolved(
+ 	u_short			af;
+ 	const char *		fam_spec;
+ 
+-	(void)gai_errno;
+-	(void)service;
+-	(void)hints;
++	UNUSED_ARG(gai_errno);
++	UNUSED_ARG(service);
+ 	ctx = context;
+ 
+-	DPRINTF(1, ("peer_name_resolved(%s) rescode %d\n", name, rescode));
++	af = ctx->family;
++	fam_spec = (AF_INET6 == af)
++			? " (AAAA)"
++			: (AF_INET == af)
++				? " (A)"
++				: "";
+ 
+ 	if (rescode) {
+ 		free(ctx);
+ 		msyslog(LOG_ERR,
+-			"giving up resolving host %s: %s (%d)",
+-			name, gai_strerror(rescode), rescode);
++			"giving up resolving host %s%s: %s (%d)",
++			name, fam_spec, gai_strerror(rescode), rescode);
+ 		return;
+ 	}
+ 
+@@ -4594,18 +4599,9 @@ peer_name_resolved(
+ 		memcpy(&peeraddr, res->ai_addr, res->ai_addrlen);
+ 		if (is_sane_resolved_address(&peeraddr,
+ 					     ctx->host_mode)) {
+-			NLOG(NLOG_SYSINFO) {
+-				af = ctx->family;
+-				fam_spec = (AF_INET6 == af)
+-					       ? "(AAAA) "
+-					       : (AF_INET == af)
+-						     ? "(A) "
+-						     : "";
+-				msyslog(LOG_INFO, "DNS %s %s-> %s",
++			LOGIF(SYSINFO, (LOG_INFO, "DNS %s%s -> %s",
+ 					name, fam_spec,
+-					stoa(&peeraddr));
+-			}
+-
++					stoa(&peeraddr)));
+ 			/* 
+ 			 * peer_clear needs to know if this association was specified
+ 			 * in the startup configuration file to set the next poll time.
+@@ -5615,7 +5611,7 @@ getnetnum(
+ 		AF_INET == AF(addr) ||
+ 		AF_INET6 == AF(addr));
+ 
+-	if (!is_ip_address(num, AF(addr), addr)) {
++	if (!sau_from_string(num, AF(addr), addr)) {
+ 		return 0;
+ 	}
+ # ifdef ISC_PLATFORM_HAVESALEN
+diff --git a/ntpd/ntp_control.c b/ntpd/ntp_control.c
+index 6756fa0..3dbb6aa 100644
+--- a/ntpd/ntp_control.c
++++ b/ntpd/ntp_control.c
+@@ -3663,18 +3663,18 @@ static u_int32 derive_nonce(
+ 		last_salt_update = current_time;
+ 	}
+ 
+-	MD5Init(&ctx);
+-	MD5Update(&ctx, salt, sizeof(salt));
+-	MD5Update(&ctx, &ts_i, sizeof(ts_i));
+-	MD5Update(&ctx, &ts_f, sizeof(ts_f));
++	ntp_md5_init(&ctx);
++	ntp_md5_update(&ctx, salt, sizeof(salt));
++	ntp_md5_update(&ctx, &ts_i, sizeof(ts_i));
++	ntp_md5_update(&ctx, &ts_f, sizeof(ts_f));
+ 	if (IS_IPV4(addr)) {
+-		MD5Update(&ctx, &SOCK_ADDR4(addr), sizeof(SOCK_ADDR4(addr)));
++		ntp_md5_update(&ctx, &SOCK_ADDR4(addr), sizeof(SOCK_ADDR4(addr)));
+ 	} else {
+-		MD5Update(&ctx, &SOCK_ADDR6(addr), sizeof(SOCK_ADDR6(addr)));
++		ntp_md5_update(&ctx, &SOCK_ADDR6(addr), sizeof(SOCK_ADDR6(addr)));
+ 	}
+-	MD5Update(&ctx, &NSRCPORT(addr), sizeof(NSRCPORT(addr)));
+-	MD5Update(&ctx, salt, sizeof(salt));
+-	MD5Final(d.digest, &ctx);
++	ntp_md5_update(&ctx, &NSRCPORT(addr), sizeof(NSRCPORT(addr)));
++	ntp_md5_update(&ctx, salt, sizeof(salt));
++	ntp_md5_final(d.digest, &ctx);
+ 
+ 	return d.extract;
+ }
+diff --git a/ntpd/ntp_crypto.c b/ntpd/ntp_crypto.c
+index 38a62fd..d407fcf 100644
+--- a/ntpd/ntp_crypto.c
++++ b/ntpd/ntp_crypto.c
+@@ -150,7 +150,7 @@ static int calcomp(struct calendar *pjd1, struct calendar *pjd2)
+  * Global cryptodata in host byte order
+  */
+ u_int32	crypto_flags = 0x0;	/* status word */
+-int	crypto_nid = KEY_TYPE_MD5; /* digest nid */
++int	crypto_nid = NID_md5; /* digest nid */
+ char	*sys_hostname = NULL;
+ char	*sys_groupname = NULL;
+ static char *host_filename = NULL;	/* host file name */
+diff --git a/ntpd/ntp_io.c b/ntpd/ntp_io.c
+index 9d79fe4..b9861e2 100644
+--- a/ntpd/ntp_io.c
++++ b/ntpd/ntp_io.c
+@@ -41,7 +41,6 @@
+ #include "timevalops.h"
+ #include "timespecops.h"
+ #include "ntpd-opts.h"
+-#include "safecast.h"
+ 
+ /* Don't include ISC's version of IPv6 variables and structures */
+ #define ISC_IPV6_H 1
+@@ -1116,7 +1115,7 @@ add_nic_rule(
+ 	} else if (MATCH_IFADDR == match_type) {
+ 		REQUIRE(NULL != if_name);
+ 		/* set rule->addr */
+-		is_ip = is_ip_address(if_name, AF_UNSPEC, &rule->addr);
++		is_ip = sau_from_string(if_name, AF_UNSPEC, &rule->addr);
+ 		REQUIRE(is_ip);
+ 	} else
+ 		REQUIRE(NULL == if_name);
+@@ -1736,6 +1735,17 @@ update_interfaces(
+ 
+ 		DPRINT_INTERFACE(4, (&enumep, "examining ", "\n"));
+ 
++#ifdef SYS_WINNT
++		/*
++		 * https://bugs.ntp.org/3932 Ignore teredo IFs in Windows ntpd
++		 */
++		static const char szTeredo[] = "Teredo Tunneling Pseudo-Interfa";
++		if (!memcmp(szTeredo, enumep.name,
++			    min(sizeof szTeredo, sizeof enumep.name))) {
++			continue;
++		}
++#endif
++
+ 		/*
+ 		 * Check if and how we are going to use the interface.
+ 		 */
+@@ -1917,15 +1927,14 @@ update_interfaces(
+ 			}
+ 			new_interface_found = TRUE;
+ 			DPRINT_INTERFACE(3,
+-				(ep, "updating ", " new - created\n"));
+-		}
+-		else {
++				(ep2, "updating ", " new - created\n"));
++		} else {
+ 			DPRINT_INTERFACE(3,
+-				(ep, "updating ", " new - FAILED"));
++				(ep2, "updating ", " new - FAILED"));
+ 
+ 			msyslog(LOG_ERR,
+ 				"cannot bind address %s",
+-				stoa(&ep->sin));
++				stoa(&ep2->sin));
+ 		}
+ 		free(ep2);
+ 	}
+@@ -3205,7 +3214,7 @@ sendpkt(
+ 	}
+ 
+ 	do {
+-		if (INT_LL_OF_GLOB & src->flags) {
++		if (ismcast && INT_LL_OF_GLOB & src->flags) {
+ 			/* avoid duplicate multicasts on same IPv6 net */
+ 			goto loop;
+ 		}
+diff --git a/ntpd/ntp_proto.c b/ntpd/ntp_proto.c
+index 170294c..9d48c0b 100644
+--- a/ntpd/ntp_proto.c
++++ b/ntpd/ntp_proto.c
+@@ -2306,37 +2306,29 @@ receive(
+ 	 * this maximum and advance the headway to give the sender some
+ 	 * headroom. Very intricate.
+ 	 */
++	peer->ppoll = max(peer->minpoll, pkt->ppoll);
+ 
+ 	/*
+ 	 * Check for any kiss codes. Note this is only used when a server
+-	 * responds to a packet request.
+-	 */
+-
+-	/*
+-	 * Check to see if this is a RATE Kiss Code
+-	 * Currently this kiss code will accept whatever valid poll
+-	 * rate that the server sends
++	 * responds to a client request.
+ 	 */
+-	if (   (NTP_MINPOLL > pkt->ppoll)
+-	    || (NTP_MAXPOLL < pkt->ppoll)
+-	   ) {
+-		DPRINTF(2, ("RATEKISS: Invalid ppoll (%d) from %s\n",
+-				pkt->ppoll, stoa(&rbufp->recv_srcadr)));
+-		sys_badlength++;
+-		return;			/* invalid packet poll */
+-	}
+-	peer->ppoll = max(peer->minpoll, pkt->ppoll);
+ 	if (kissCode == RATEKISS) {
++		if (   pkt->ppoll < NTP_MINPOLL
++		    || pkt->ppoll > NTP_MAXPOLL) {
++			DPRINTF(2, ("Ignoring ppoll %d RATE KoD from %s\n",
++				    pkt->ppoll, stoa(&rbufp->recv_srcadr)));
++			sys_badlength++;
++			return;			/* invalid packet poll */
++		}
+ 		peer->selbroken++;	/* Increment the KoD count */
+ 		report_event(PEVNT_RATE, peer, NULL);
+-		if (pkt->ppoll > peer->minpoll)
+-			peer->minpoll = peer->ppoll;
++		peer->minpoll = peer->ppoll;
+ 		peer->burst = peer->retry = 0;
+ 		peer->throttle = (NTP_SHIFT + 1) * (1 << peer->minpoll);
+ 		poll_update(peer, pkt->ppoll, 0);
+ 		return;				/* kiss-o'-death */
+-	}
+-	if (kissCode != NOKISS) {
++
++	} else if (kissCode != NOKISS) {
+ 		peer->selbroken++;	/* Increment the KoD count */
+ 		return;		/* Drop any other kiss code packets */
+ 	}
+@@ -3575,8 +3567,8 @@ clock_select(void)
+ 	indx_size = ALIGNED_SIZE(nlist * 2 * sizeof(*indx));
+ 	octets = endpoint_size + peers_size + indx_size;
+ 	endpoint = erealloc(endpoint, octets);
+-	peers = INC_ALIGNED_PTR(endpoint, endpoint_size);
+-	indx = INC_ALIGNED_PTR(peers, peers_size);
++	peers = INCR_PTR(endpoint, endpoint_size);
++	indx = INCR_PTR(peers, peers_size);
+ 
+ 	/*
+ 	 * Initially, we populate the island with all the rifraff peers
+diff --git a/ntpd/ntp_restrict.c b/ntpd/ntp_restrict.c
+index f1df8cc..e9861f9 100644
+--- a/ntpd/ntp_restrict.c
++++ b/ntpd/ntp_restrict.c
+@@ -40,8 +40,15 @@
+ 
+ /*
+  * We allocate INC_RESLIST{4|6} entries to the free list whenever empty.
+- * Auto-tune these to be just less than 1KB (leaving at least 32 bytes
+- * for allocator overhead).
++ * Auto-tune these to be just less than 1 KB (leaving at least 32 bytes
++ * for allocator overhead).  We'll use one entry for each "restrict"
++ * in ntp.conf, plus one for each local address.  This tuning gives us
++ * room for 31 IPv4 entries and 17 IPv6 entries per allocation on a
++ * 64-bit system, which is enough for the most common configurations
++ * to have all the restrictions in a a pair of 1 KB "hot zones" that will
++ * be accessed on every incoming packet of the respective address family
++ * and should stay in cache.  This is a performance optimization
++ * compared to allocating and freeing each entry as needed.
+  */
+ #define	INC_RESLIST4	((1024 - 32) / V4_SIZEOF_RESTRICT_U)
+ #define	INC_RESLIST6	((1024 - 32) / V6_SIZEOF_RESTRICT_U)
+@@ -234,9 +241,9 @@ alloc_res4(void)
+ 	if (res != NULL) {
+ 		return res;
+ 	}
+-	rl = eallocarray(count, cb);
++	rl = eallocarray(count, cb);	/* zeroes */
+ 	/* link all but the first onto free list */
+-	res = (void *)((char *)rl + (count - 1) * cb);
++	res = INCR_PTR(rl, (count - 1) * cb);
+ 	for (i = count - 1; i > 0; i--) {
+ 		LINK_SLIST(resfree4, res, link);
+ 		res = (void *)((char *)res - cb);
+@@ -260,9 +267,9 @@ alloc_res6(void)
+ 	if (res != NULL) {
+ 		return res;
+ 	}
+-	rl = eallocarray(count, cb);
++	rl = eallocarray(count, cb);	/* zeroes */
+ 	/* link all but the first onto free list */
+-	res = (void *)((char *)rl + (count - 1) * cb);
++	res = INCR_PTR(rl, (count - 1) * cb);
+ 	for (i = count - 1; i > 0; i--) {
+ 		LINK_SLIST(resfree6, res, link);
+ 		res = (void *)((char *)res - cb);
+@@ -336,8 +343,9 @@ match_restrict4_addr(
+ 
+ 	for (res = restrictlist4; res != NULL; res = next) {
+ 		next = res->link;
+-		if (res->expire && res->expire <= current_time) {
++		if (res->expire > 0 && res->expire <= current_time) {
+ 			free_res(res, v6);	/* zeroes the contents */
++			continue;
+ 		}
+ 		if (   res->u.v4.addr == (addr & res->u.v4.mask)
+ 		    && (   !(RESM_NTPONLY & res->mflags)
+@@ -363,8 +371,9 @@ match_restrict6_addr(
+ 
+ 	for (res = restrictlist6; res != NULL; res = next) {
+ 		next = res->link;
+-		if (res->expire && res->expire <= current_time) {
+-			free_res(res, v6);
++		if (res->expire > 0 && res->expire <= current_time) {
++			free_res(res, v6);	/* zeroes the contents */
++			continue;
+ 		}
+ 		MASK_IPV6_ADDR(&masked, addr, &res->u.v6.mask);
+ 		if (ADDR6_EQ(&masked, &res->u.v6.addr)
+diff --git a/ntpd/ntpd.c b/ntpd/ntpd.c
+index f86b06c..3dadc0b 100644
+--- a/ntpd/ntpd.c
++++ b/ntpd/ntpd.c
+@@ -229,13 +229,6 @@ char const *progname;
+ 
+ int was_alarmed;
+ 
+-#ifdef DECL_SYSCALL
+-/*
+- * We put this here, since the argument profile is syscall-specific
+- */
+-extern int syscall	(int, ...);
+-#endif /* DECL_SYSCALL */
+-
+ 
+ #if !defined(SIM) && defined(SIGDIE1)
+ static volatile int signalled	= 0;
+@@ -966,7 +959,7 @@ ntpdmain(
+ 
+ 		while (ifacect-- > 0) {
+ 			add_nic_rule(
+-				is_ip_address(*ifaces, AF_UNSPEC, &addr)
++				sau_from_string(*ifaces, AF_UNSPEC, &addr)
+ 					? MATCH_IFADDR
+ 					: MATCH_IFNAME,
+ 				*ifaces, -1, ACTION_LISTEN);
+diff --git a/ntpdc/ntpdc.c b/ntpdc/ntpdc.c
+index e39ddfe..e5593a0 100644
+--- a/ntpdc/ntpdc.c
++++ b/ntpdc/ntpdc.c
+@@ -32,7 +32,6 @@
+ 
+ #include "ntp_libopts.h"
+ #include "ntpdc-opts.h"
+-#include "safecast.h"
+ 
+ #ifdef SYS_VXWORKS
+ 				/* vxWorks needs mode flag -casey*/
+@@ -965,8 +964,7 @@ sendrequest(
+ 	get_systime(&ts);
+ 	L_ADD(&ts, &delay_time);
+ 	HTONL_FP(&ts, ptstamp);
+-	maclen = authencrypt(
+-		info_auth_keyid, (void *)&qpkt, size2int_chk(reqsize));
++	maclen = authencrypt(info_auth_keyid, (void *)&qpkt, reqsize);
+ 	if (!maclen) {  
+ 		fprintf(stderr, "Key not found\n");
+ 		return 1;
+diff --git a/ntpq/ntpq.c b/ntpq/ntpq.c
+index 56ff4e5..2cce1b6 100644
+--- a/ntpq/ntpq.c
++++ b/ntpq/ntpq.c
+@@ -49,7 +49,6 @@
+ #include <ssl_applink.c>
+ 
+ #include "ntp_libopts.h"
+-#include "safecast.h"
+ 
+ #ifdef SYS_VXWORKS		/* vxWorks needs mode flag -casey*/
+ # define open(name, flags)   open(name, flags, 0777)
+@@ -3474,8 +3473,8 @@ rawprint(
+ /*
+  * Global data used by the cooked output routines
+  */
+-int out_chars;		/* number of characters output */
+-int out_linecount;	/* number of characters output on this line */
++size_t out_chars;	/* number of characters output */
++size_t out_linecount;	/* number of characters output on this line */
+ 
+ 
+ /*
+@@ -3499,12 +3498,12 @@ output(
+ 	const char *value
+ 	)
+ {
+-	int len;
++	size_t len;
+ 
+ 	/* strlen of "name=value" */
+-	len = size2int_sat(strlen(name) + 1 + strlen(value));
++	len = strlen(name) + 1 + strlen(value);
+ 
+-	if (out_chars != 0) {
++	if (out_chars > 0) {
+ 		out_chars += 2;
+ 		if ((out_linecount + len + 2) > MAXOUTLINE) {
+ 			fputs(",\n", fp);
+diff --git a/ports/winnt/include/ntservice.h b/ports/winnt/include/ntservice.h
+index 745f6d3..4ffe5c9 100644
+--- a/ports/winnt/include/ntservice.h
++++ b/ports/winnt/include/ntservice.h
+@@ -24,8 +24,8 @@
+ void ntservice_init(void);
+ void ntservice_isup(void);
+ void UpdateSCM(DWORD);
++BOOL shall_sync_cmos_time(void);
+ void WINAPI ServiceControl(DWORD dwCtrlCode);
+-BOOL ntservice_systemisshuttingdown(void);
+ BOOL WINAPI OnConsoleEvent(DWORD dwCtrlType);
+ 
+ #endif	/* NTSERVICE_H */
+diff --git a/ports/winnt/ntpd/nt_clockstuff.c b/ports/winnt/ntpd/nt_clockstuff.c
+index 3ec0a23..0431e9b 100644
+--- a/ports/winnt/ntpd/nt_clockstuff.c
++++ b/ports/winnt/ntpd/nt_clockstuff.c
+@@ -269,6 +269,7 @@ static void init_small_adjustment(void)
+ 	    && isc_win32os_versioncheck(6, 2, 0, 0) < 0) {
+ 		// 6.0 Windows Vista and Windows Server 2008
+ 		// 6.1 Windows 7 and Windows Server 2008 R2
++		// 6.2 Windows 8
+ 		//
+ 		// Windows Vista is documented as affected.
+ 		// Windows Server 2008 is assumed affected.
+@@ -630,11 +631,6 @@ init_winnt_time(void)
+ 	if (winnt_time_initialized)
+ 		return;
+ 
+-	/* Set up the Console Handler */
+-	if (!SetConsoleCtrlHandler(OnConsoleEvent, TRUE)) {
+-		msyslog(LOG_ERR, "Can't set console control handler: %m");
+-	}
+-
+ 	/* Set the Event-ID message-file name. */
+ 	if (!GetModuleFileName(NULL, szMsgPath, sizeof(szMsgPath))) {
+ 		msyslog(LOG_ERR, "GetModuleFileName(PGM_EXE_FILE) failed: %m");
+@@ -642,6 +638,7 @@ init_winnt_time(void)
+ 	}
+ 
+ 	/* Initialize random file before OpenSSL checks */
++	/* Likely can be removed as OpenSSL uses Windows crypto to seed. */
+ 	if (!init_randfile())
+ 		msyslog(LOG_ERR, "Unable to initialize .rnd file");
+ 
+@@ -779,7 +776,9 @@ init_winnt_time(void)
+ 	/* 
+ 	 * Implement any multimedia timer manipulation requested via -M
+ 	 * option.  This is rumored to be unneeded on Win8 with the
+-	 * introduction of the precise (interpolated) system clock.
++	 * introduction of the precise (interpolated) system clock,
++	 * and this code isn't reached on Windows 8 and later thanks
++	 * to the early return just above.
+ 	 */
+ 	if (modify_mm_timer) {
+ 		if (timeGetDevCaps(&tc, sizeof(tc)) == TIMERR_NOERROR) {
+@@ -856,21 +855,22 @@ reset_winnt_time(void)
+ 	 * Verify this will not call SetSystemTimeAdjustment if
+ 	 * ntpd is running in ntpdate mode.
+ 	 */
+-	if (sys_leap == LEAP_NOTINSYNC || ls_time_adjustment != 0)
+-		SetSystemTimeAdjustment(0, TRUE);	 
+-
++	if (sys_leap == LEAP_NOTINSYNC || ls_time_adjustment != 0) {
++		SetSystemTimeAdjustment(0, TRUE);
++	}
+ 	/*
+ 	 * Read the current system time, and write it back to
+ 	 * force CMOS update, only if we are exiting because
+ 	 * the computer is shutting down and we are already
+ 	 * synchronized.
+ 	 */
+-	 if (ntservice_systemisshuttingdown() && sys_leap != LEAP_NOTINSYNC) {
++	 if (shall_sync_cmos_time()) {
+ 		GetSystemTime(&st);
+ 		SetSystemTime(&st);
+-		NLOG(NLOG_SYSEVENT | NLOG_CLOCKINFO)
++		NLOG(NLOG_SYSEVENT | NLOG_CLOCKINFO) {
+ 			msyslog(LOG_NOTICE, "system is shutting down, CMOS time reset.");
+-	}
++		}
++	 }
+ }
+ 
+ 
+diff --git a/ports/winnt/ntpd/ntservice.c b/ports/winnt/ntpd/ntservice.c
+index 3176260..2937969 100644
+--- a/ports/winnt/ntpd/ntservice.c
++++ b/ports/winnt/ntpd/ntservice.c
+@@ -165,6 +165,11 @@ ntservice_init(void)
+ 		snprintf(ConsoleTitle, sizeof(ConsoleTitle),
+ 			 "NTP Version %s", Version);
+ 		SetConsoleTitle(ConsoleTitle);
++
++		if (!SetConsoleCtrlHandler(OnConsoleEvent, TRUE)) {
++			msyslog(LOG_ERR, "SetConsoleCtrlHandler: %m");
++			exit(1);
++		}
+ 	}
+ 
+ #ifdef _CRTDBG_MAP_ALLOC
+@@ -196,7 +201,6 @@ void
+ ntservice_isup(void)
+ {
+ 	if (!foreground) {
+-		/* Register handler with the SCM */
+ 		if (!hServiceStatus) {
+ 			NTReportError(NTP_SERVICE_NAME,
+ 				"could not report to SCM");
+@@ -207,12 +211,15 @@ ntservice_isup(void)
+ }
+ 
+ /*
+- * Routine to check if the service is stopping
+- * because the computer is shutting down
++ * Indicate if setting system time at termination is
++ * useful.
+  */
+ BOOL
+-ntservice_systemisshuttingdown(void)
++shall_sync_cmos_time(void)
+ {
++	if (LEAP_NOTINSYNC == sys_leap) {
++		return FALSE;
++	}
+ 	return computer_shutting_down;
+ }
+ 
+@@ -258,11 +265,8 @@ ServiceControl(
+ 		msyslog(LOG_INFO, "SCM requests stop (%s)",
+ 			msg_tab[!!computer_shutting_down]);
+ 		UpdateSCM(SERVICE_STOP_PENDING);
+-		if (WaitableExitEventHandle != NULL) {
+-			SetEvent(WaitableExitEventHandle);
+-		} else {
+-			exit(EX_SOFTWARE);
+-		}
++		DEBUG_INSIST(NULL != WaitableExitEventHandle);
++		SetEvent(WaitableExitEventHandle);
+ 		break;
+ 
+ 	case SERVICE_CONTROL_PAUSE:
+@@ -346,10 +350,8 @@ OnConsoleEvent(
+ 		case CTRL_C_EVENT:
+ 		case CTRL_CLOSE_EVENT:
+ 		case CTRL_SHUTDOWN_EVENT:
+-			if (WaitableExitEventHandle != NULL) {
+-				SetEvent(WaitableExitEventHandle);
+-				Sleep(100);  //##++
+-			}
++			SetEvent(WaitableExitEventHandle);
++			Sleep(100);  //##++
+ 			break;
+ 
+ 		default :
+diff --git a/ports/winnt/scripts/mkver.bat b/ports/winnt/scripts/mkver.bat
+index c0c7b52..f29ffd0 100755
+--- a/ports/winnt/scripts/mkver.bat
++++ b/ports/winnt/scripts/mkver.bat
+@@ -13,7 +13,7 @@ see notes/remarks directly below this header:
+ # 
+ #
+ # Notes:  I had two goals with this script one to only use native
+-#         NT Shell commands and two was too emulate the PERL style
++#         NT Shell commands and two was to emulate the PERL style
+ #         output. This required some work for the DATE format as 
+ #         you will see and TIME was really tricky to get a format 
+ #         matching PERLs!
+@@ -21,6 +21,25 @@ see notes/remarks directly below this header:
+ #
+ # Changes:
+ #
++# 06/03/2024	Dave Hart
++#				- Fix race condition with vs2015 project
++#				  files due to initial invocations not 
++#				  having "-P programname" argument combined
++#				  with use of %TEMP% directory with file
++#				  names differentiated by program name.
++#				- Allow reproducible builds and consistent
++#				  timestamps across tools by presetting
++#				  MYDATE and MYTIME environment variables.
++#				- Remove support for pre-WinNT 4 SP6a.
++#				- Do not use %TEMP% directory, this script
++#				  is invoked in per-target directories so
++#				  the current directory is safer against
++#				  collisions between simultaneous runs.
++#				- Replace remaining uses of find.exe with
++#				  findstr.exe and remove clever PATH 
++#				  manipulation to ensure Windows find.exe
++#				  is the first one found.
++#
+ # 04/01/2023	Dave Hart
+ #				- Use fast 'bk root' to check for BitKeeper
+ #				  instead of invocation that gets ChangeSet.
+@@ -158,7 +177,6 @@ GOTO USAGE
+ 
+ :BEGIN
+ 
+-SET PATH=%COMSPEC:\cmd.exe=%;%PATH%
+ SET GENERATED_PROGRAM=%2
+ 
+ REM *****************************************************************************************************************
+@@ -175,8 +193,6 @@ REM ****************************************************************************
+ 	SET VER=
+ 	SET CSET=
+ 	SET SSL=
+-	SET MYDATE=
+-	SET MYTIME=
+ 	SET DAY=99
+ 	SET NMM=99
+ 	SET YEAR=0
+@@ -193,15 +209,14 @@ REM ****************************************************************************
+ 	SET ACTIVEBIAS=
+ 
+ REM *****************************************************************************************************************
+-REM Check if DATE and TIME environment variables are available
++REM Check if DATE and TIME environment variables are available.
++REM Allow reproducible builds by presetting MYDATE & MYTIME.
+ REM *****************************************************************************************************************
+ 
+-	SET MYDATE=%DATE%
+-	SET MYTIME=%TIME%
+-
+-	REM ** Not available (huh? Are you older than NT4SP6A, grandpa?)
+-	IF "%MYDATE%" == "" FOR /F "TOKENS=1 DELIMS=" %%a IN ('date/t') DO SET MYDATE=%%a
+-	IF "%MYTIME%" == "" FOR /F "TOKENS=1 DELIMS=" %%a IN ('time/t') DO SET MYTIME=%%a
++	IF NOT "" == "%MYDATE%" echo Warning: mkver.bat : Using preset date for reproducible build: %MYDATE%
++	IF NOT "" == "%MYTIME%" echo Warning: mkver.bat : Using preset time for reproducible build: %MYTIME%
++	IF "" == "%MYDATE%" SET MYDATE=%DATE%
++	IF "" == "%MYTIME%" SET MYTIME=%TIME%
+ 
+ REM *****************************************************************************************************************
+ REM Try to find out UTC offset 
+@@ -214,17 +229,16 @@ REM ****************************************************************************
+ 	SET UTC_SIGN=
+ 	
+ 	REM *** Now get the timezone settings from the registry
+-	reg export "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\TimeZoneInformation" %TEMP%\TZ-%GENERATED_PROGRAM%.TMP >NUL
+-	REM was: regedit /e %TEMP%\TZ-%GENERATED_PROGRAM%.TMP "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\TimeZoneInformation"
+-	IF NOT EXIST %TEMP%\TZ-%GENERATED_PROGRAM%.TMP GOTO NOTZINFO
++	reg export "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\TimeZoneInformation" tzinfo.reg >NUL
++	IF NOT EXIST tzinfo.reg GOTO NOTZINFO
+ 
+-	for /f "Tokens=1* Delims==" %%a in ('type %TEMP%\TZ-%GENERATED_PROGRAM%.TMP') do if %%a == "ActiveTimeBias" SET ACTIVEBIAS=%%b
++	for /f "Tokens=1* Delims==" %%a in ('type tzinfo.reg') do if %%a == "ActiveTimeBias" SET ACTIVEBIAS=%%b
+ 	REM Windows 10 - Home and possibly others
+-	IF "%ACTIVEBIAS%" == "" for /f "Tokens=1* Delims==" %%a in ('type %TEMP%\TZ-%GENERATED_PROGRAM%.TMP') do if %%a == "Bias" SET ACTIVEBIAS=%%b
++	IF "%ACTIVEBIAS%" == "" for /f "Tokens=1* Delims==" %%a in ('type tzinfo.reg') do if %%a == "Bias" SET ACTIVEBIAS=%%b
+ 	for /f "Tokens=1* Delims=:" %%a in ('echo %ACTIVEBIAS%') do ( SET ACTIVEBIAS=%%b & SET PARTYP=%%a )
+ 	
+ 	REM *** Clean up temporary file
+-	IF EXIST %TEMP%\TZ-%GENERATED_PROGRAM%.TMP DEL %TEMP%\TZ-%GENERATED_PROGRAM%.TMP
++	IF EXIST tzinfo.reg DEL tzinfo.reg
+ 	
+ 	REM *** Check if we really got a dword value from the registry ...
+ 	IF NOT "%PARTYP%"=="dword " goto NOTZINFO
+@@ -261,9 +275,7 @@ REM ****************************************************************************
+ REM Now grab the Version number out of the source code (using the packageinfo.sh file...)
+ REM *****************************************************************************************************************
+ 
+-	REM First, get the main NTP version number. In recent versions this must be extracted 
+-	REM from a packageinfo.sh file while in earlier versions the info was available from 
+-	REM a version.m4 file.
++	REM First, get the NTP version number from packageinfo.sh file.
+ 	SET F_PACKAGEINFO_SH=..\..\..\..\packageinfo.sh
+ 	IF EXIST %F_PACKAGEINFO_SH% goto VER_FROM_PACKAGE_INFO
+ 	goto ERRNOVERF
+@@ -271,7 +283,7 @@ REM ****************************************************************************
+ :VER_FROM_PACKAGE_INFO
+ 	REM Get version from packageinfo.sh file, which contains lines reading e.g.
+ 	
+-	TYPE %F_PACKAGEINFO_SH% | FIND /V "rcpoint=" | FIND /V "betapoint=" | FIND "point=" > point.txt
++	TYPE %F_PACKAGEINFO_SH% | findstr /V "rcpoint=" | findstr /V "betapoint=" | findstr "point=" > point.txt
+ 	SET F_POINT_SH=point.txt
+ 	
+ 	FOR /F "eol=# TOKENS=2 DELIMS==" %%a IN ('findstr  "proto=" %%F_PACKAGEINFO_SH%%') DO SET PROTO=%%a
+@@ -354,18 +366,16 @@ REM Check for user settings regarding the time and date format, we use the regis
+ REM *****************************************************************************************************************
+ 
+ 
+-	REM Any temporary files left from a previous run? Go where you belong...
++	REM Any temporary files left from aborted previous run? Go where you belong...
+ 	IF exist userset.reg del userset.reg
+ 	IF exist userset.txt del userset.txt
+ 	
+ 	reg export "HKEY_CURRENT_USER\Control Panel\International" userset.reg >NUL
+-	REM was: regedit /E userset.reg "HKEY_CURRENT_USER\Control Panel\International"
+ 	IF not exist userset.reg goto ERRNOREG
+ 
+-	rem *** convert from unicode to ascii if necessary
++	rem *** convert from 16-bit unicode to 8-bit text
+ 	type userset.reg > userset.txt
+ 
+-
+ 	FOR /F "TOKENS=1-9 DELIMS== " %%a IN ('findstr "iDate" userset.txt') DO SET DATEFORMAT=%%b
+ 	FOR /F "TOKENS=1-9 DELIMS== " %%a IN ('findstr "iTime" userset.txt') DO SET TIMEFORMAT=%%b
+ 
+@@ -489,25 +499,25 @@ REM ****************************************************************************
+ REM Here are the error messages I know
+ REM *****************************************************************************************************************
+ :ERRNOREG
+-   ECHO "Error: Registry could not be read (check if reg.exe is available and works as expected)"
+-   GOTO EOF
++    ECHO "Error: Registry could not be read (check if reg.exe is available and works as expected)"
++    GOTO EOF
+ 
+ 
+ :ERRNODATE
+-    ECHO "Error: Dateformat unknown (check if contents of userset.txt are correctly, especially for iDate and sDate)"
+-	GOTO EOF
++    ECHO "Error: Date format unknown (check if contents of userset.txt are correct, especially for iDate and sDate)"
++    GOTO EOF
+ 
+ :ERRNOTIME
+-    ECHO "Error: Timeformat unknown (check if contents of userset.txt are correctly, especially for iTime and sTime)"
+-	GOTO EOF
++    ECHO "Error: Time format unknown (check if contents of userset.txt are correct, especially for iTime and sTime)"
++    GOTO EOF
+ 
+ :ERRNOVERF
+     ECHO "Error: Version file not found (searching for ..\..\..\..\packageinfo.sh)"
+-	GOTO EOF
++    GOTO EOF
+ 
+ 
+ REM *****************************************************************************************************************
+-REM Show'em how to run (me)
++REM Show 'em how to run (me)
+ REM *****************************************************************************************************************
+ :USAGE
+ 
+@@ -523,7 +533,7 @@ REM All good things come to an end someday. Time to leave
+ REM *****************************************************************************************************************
+ :EOF
+ 
+-REM *** Cleaning up 
++REM *** Cleaning up
+ IF EXIST point.txt DEL point.txt
+ IF EXIST userset.txt DEL userset.txt
+ IF EXIST userset.reg DEL userset.reg
+diff --git a/ports/winnt/vs2013/libntp/libntp.vcxproj b/ports/winnt/vs2013/libntp/libntp.vcxproj
+index 0ada2d0..3eaa23b 100644
+--- a/ports/winnt/vs2013/libntp/libntp.vcxproj
++++ b/ports/winnt/vs2013/libntp/libntp.vcxproj
+@@ -360,7 +360,6 @@
+     <ClInclude Include="..\..\..\..\include\ntp_types.h" />
+     <ClInclude Include="..\..\..\..\include\ntp_unixtime.h" />
+     <ClInclude Include="..\..\..\..\include\recvbuff.h" />
+-    <ClInclude Include="..\..\..\..\include\safecast.h" />
+     <ClInclude Include="..\..\..\..\include\timespecops.h" />
+     <ClInclude Include="..\..\..\..\include\timetoa.h" />
+     <ClInclude Include="..\..\..\..\include\timevalops.h" />
+diff --git a/ports/winnt/vs2013/libntp/libntp.vcxproj.filters b/ports/winnt/vs2013/libntp/libntp.vcxproj.filters
+index 7a1e261..f247540 100644
+--- a/ports/winnt/vs2013/libntp/libntp.vcxproj.filters
++++ b/ports/winnt/vs2013/libntp/libntp.vcxproj.filters
+@@ -577,9 +577,6 @@
+     <ClInclude Include="..\..\..\..\libntp\lib\isc\win32\include\isc\win32os.h">
+       <Filter>Header Files</Filter>
+     </ClInclude>
+-    <ClInclude Include="..\..\..\..\include\safecast.h">
+-      <Filter>Header Files</Filter>
+-    </ClInclude>
+     <ClInclude Include="..\..\..\..\include\libntp.h">
+       <Filter>Header Files</Filter>
+     </ClInclude>
+diff --git a/ports/winnt/vs2015/libntp/libntp.vcxproj b/ports/winnt/vs2015/libntp/libntp.vcxproj
+index 1b87cea..4006f03 100644
+--- a/ports/winnt/vs2015/libntp/libntp.vcxproj
++++ b/ports/winnt/vs2015/libntp/libntp.vcxproj
+@@ -265,7 +265,6 @@
+     <ClInclude Include="..\..\..\..\include\ntp_types.h" />
+     <ClInclude Include="..\..\..\..\include\ntp_unixtime.h" />
+     <ClInclude Include="..\..\..\..\include\recvbuff.h" />
+-    <ClInclude Include="..\..\..\..\include\safecast.h" />
+     <ClInclude Include="..\..\..\..\include\timespecops.h" />
+     <ClInclude Include="..\..\..\..\include\timetoa.h" />
+     <ClInclude Include="..\..\..\..\include\timevalops.h" />
+diff --git a/ports/winnt/vs2015/libntp/libntp.vcxproj.filters b/ports/winnt/vs2015/libntp/libntp.vcxproj.filters
+index 23fff90..0d3ab6a 100644
+--- a/ports/winnt/vs2015/libntp/libntp.vcxproj.filters
++++ b/ports/winnt/vs2015/libntp/libntp.vcxproj.filters
+@@ -517,9 +517,6 @@
+     <ClInclude Include="..\..\libntp\messages.h">
+       <Filter>Generated Files</Filter>
+     </ClInclude>
+-    <ClInclude Include="..\..\..\..\include\safecast.h">
+-      <Filter>Header Files</Filter>
+-    </ClInclude>
+     <ClInclude Include="..\..\..\..\include\libntp.h">
+       <Filter>Header Files</Filter>
+     </ClInclude>
+diff --git a/sntp/configure.ac b/sntp/configure.ac
+index 4fb182b..ef94c3f 100644
+--- a/sntp/configure.ac
++++ b/sntp/configure.ac
+@@ -33,7 +33,7 @@ AC_LANG([C])
+ # the date YYYYMMDD optionally with -HHMM if there is more than one
+ # bump in a day.
+ 
+-sntp_configure_cache_version=20240218
++sntp_configure_cache_version=20240617
+ 
+ # When the version of config.cache and configure do not
+ # match, NTP_CACHEVERSION will flush the cache.
+diff --git a/sntp/crypto.c b/sntp/crypto.c
+index 1be2ea3..1fb5e5f 100644
+--- a/sntp/crypto.c
++++ b/sntp/crypto.c
+@@ -81,12 +81,7 @@ compute_mac(
+ 			goto mac_fail;
+ 		}
+ #ifdef OPENSSL	/* OpenSSL 1 supports return codes 0 fail, 1 okay */
+-#	    ifdef EVP_MD_CTX_FLAG_NON_FIPS_ALLOW
+-		EVP_MD_CTX_set_flags(ctx, EVP_MD_CTX_FLAG_NON_FIPS_ALLOW);
+-#	    endif
+-		/* [Bug 3457] DON'T use plain EVP_DigestInit! It would
+-		 *  kill the flags! */
+-		if (!EVP_DigestInit_ex(ctx, EVP_get_digestbynid(key_type), NULL)) {
++		if (!EVP_DigestInit(ctx, EVP_get_digestbynid(key_type))) {
+ 			msyslog(LOG_ERR, "make_mac: MAC %s Digest Init failed.",
+ 				macname);
+ 			goto mac_fail;
+@@ -107,9 +102,10 @@ compute_mac(
+ 			len = 0;
+ 		}
+ #else /* !OPENSSL */
+-		(void)key_type; /* unused, so try to prevent compiler from croaks */
++		UNUSED_LOCAL(key_type);
++
+ 		if (!EVP_DigestInit(ctx, EVP_get_digestbynid(key_type))) {
+-			msyslog(LOG_ERR, "make_mac: MAC MD5 Digest Init failed.");
++			msyslog(LOG_ERR, "make_mac: MAC Digest Init failed.");
+ 			goto mac_fail;
+ 		}
+ 		EVP_DigestUpdate(ctx, key_data, key_size);
+diff --git a/sntp/crypto.h b/sntp/crypto.h
+index 4afe865..75d4c6e 100644
+--- a/sntp/crypto.h
++++ b/sntp/crypto.h
+@@ -11,7 +11,7 @@
+ #include "utilities.h"
+ #include "sntp-opts.h"
+ 
+-#define LEN_PKT_MAC	LEN_PKT_NOMAC + sizeof(u_int32)
++#define LEN_PKT_MAC	(LEN_PKT_NOMAC + KEY_MAC_LEN)
+ 
+ /* #include "sntp-opts.h" */
+ 
+diff --git a/sntp/libopts/Makefile.am b/sntp/libopts/Makefile.am
+index 72e9dc4..03ed955 100644
+--- a/sntp/libopts/Makefile.am
++++ b/sntp/libopts/Makefile.am
+@@ -15,7 +15,7 @@ MOSTLYCLEANFILES	=
+ AM_CFLAGS	= $(NTP_HARD_CFLAGS) $(CC_NOFORMAT)
+ AM_CPPFLAGS	= $(NTP_HARD_CPPFLAGS) -I$(top_srcdir)/../include
+ 
+-libopts.c:		$(BUILT_SOURCES)
++$(srcdir)/libopts.c:	$(BUILT_SOURCES)
+ 	@: do-nothing rule to avoid default SCCS get
+ 
+ 
+diff --git a/sntp/libopts/m4/libopts.m4 b/sntp/libopts/m4/libopts.m4
+index 23738ca..046f551 100644
+--- a/sntp/libopts/m4/libopts.m4
++++ b/sntp/libopts/m4/libopts.m4
+@@ -482,7 +482,8 @@ AC_DEFUN([LIBOPTS_CHECK_COMMON],[
+        [Use the supplied libopts tearoff code]),[
+     if test x$enableval = xyes ; then
+        AC_MSG_NOTICE([Using supplied libopts tearoff])
+-       LIBOPTS_CFLAGS='-I$(top_srcdir)/AO_Libopts_Dir'
++       # Most included files are in srcdir, substitute stdnoreturn.h is in builddir.
++       LIBOPTS_CFLAGS='-I$(top_srcdir)/AO_Libopts_Dir -I$(top_builddir)/AO_Libopts_Dir'
+        NEED_LIBOPTS_DIR=true
+        LIBOPTS_LDADD='$(top_builddir)/AO_Libopts_Dir/libopts.la'
+     fi])
+diff --git a/sntp/m4/ntp_facilitynames.m4 b/sntp/m4/ntp_facilitynames.m4
+index 5b79faf..f7b510e 100644
+--- a/sntp/m4/ntp_facilitynames.m4
++++ b/sntp/m4/ntp_facilitynames.m4
+@@ -15,7 +15,7 @@ AC_CACHE_CHECK(
+ 	    [[
+ 		void *fnames = facilitynames;
+ 	    ]]
+-	)]
++	)],
+ 	[ac_cv_HAVE_SYSLOG_FACILITYNAMES=yes],
+ 	[ac_cv_HAVE_SYSLOG_FACILITYNAMES=no]
+     )]
+diff --git a/sntp/m4/ntp_openssl.m4 b/sntp/m4/ntp_openssl.m4
+index 74cfdf0..1676908 100644
+--- a/sntp/m4/ntp_openssl.m4
++++ b/sntp/m4/ntp_openssl.m4
+@@ -291,20 +291,20 @@ case "$with_crypto" in
+  *)
+     ntp_ssl_libs_l="${ntp_ssl_libs_l:--lcrypto}"
+     ntp_ssl_libs="$ntp_ssl_libs_L $ntp_ssl_libs_l"
++    dnl unconventional repeated AC_CHECK_FUNC, clear cached result.
++    AS_UNSET([ac_cv_func_EVP_MD_CTX_new])
+     case "$ntp_ssl_libdir" in
+      '')
+ 	dnl ### set ntp_ssl_libdir ###
+ 
+-	dnl unconventional, using AC_CHECK_LIB repeatedly, clear cached result.
+-	AS_UNSET([ac_cv_lib_crypto_EVP_MD_CTX_new])
+ 	AC_MSG_NOTICE([Searching for libcrypto without -L])
+-	AC_CHECK_LIB(
+-	    [crypto],
++	LIBS="-lcrypto $NTPSSL_SAVED_LIBS"
++	AC_CHECK_FUNC(
+ 	    [EVP_MD_CTX_new],
+ 	    [ntp_ssl_libdir='not needed']
+ 	)
+-	dnl unconventional, using AC_CHECK_LIB repeatedly, clear cached result.
+-	AS_UNSET([ac_cv_lib_crypto_EVP_MD_CTX_new])
++	dnl unconventional repeated AC_CHECK_FUNC, clear cached result.
++	AS_UNSET([ac_cv_func_EVP_MD_CTX_new])
+     esac
+     case "$ntp_ssl_libdir" in
+      '')
+@@ -326,20 +326,26 @@ case "$with_crypto" in
+ 	     not_found) ;;
+ 	     *)
+ 		AC_MSG_NOTICE([Searching for libcrypto in $i])
+-		LIBS="-L$i $NTPSSL_SAVED_LIBS"
+-		AC_CHECK_LIB(
+-		    [crypto],
++		dnl https://bugs.ntp.org/3927
++		dnl Most compiler drivers sort all -L options before -l options
++		dnl when invoking the linker.  SunStudio apparently does not.
++		dnl AC_CHECK_LIB prefixes LIBS with its -l, which prevents us
++		dnl from preceding it with -L.  So we manipulate LIBS directly
++		dnl and use AC_CHECK_FUNC instead.
++		LIBS="-L$i -lcrypto $NTPSSL_SAVED_LIBS"
++		dnl unconventional repeated AC_CHECK_FUNC, clear cached result.
++		AS_UNSET([ac_cv_func_EVP_MD_CTX_new])
++		AC_CHECK_FUNC(
+ 		    [EVP_MD_CTX_new],
+ 		    [break]
+ 		)
+-		dnl unconventional, using AC_CHECK_LIB repeatedly, clear cached result.
+-		AS_UNSET([ac_cv_lib_crypto_EVP_MD_CTX_new])
+ 	    esac
+ 	done
++	dnl unconventional repeated AC_CHECK_FUNC, clear cached result.
++	AS_UNSET([ac_cv_func_EVP_MD_CTX_new])
+ 	ntp_ssl_libdir="$i"
+ 	ntp_ssl_libs_L="-L$i"
+ 	ntp_ssl_libs="$ntp_ssl_libs_L $ntp_ssl_libs_l"
+-	LIBS="$NTPSSL_SAVED_LIBS"
+ 	case "$ntp_ssl_libdir" in
+ 	 not_found)
+ 	    AC_MSG_ERROR(
+@@ -391,6 +397,7 @@ $ntp_ssl_libdir_search]
+ 	    do
+ 		AC_MSG_NOTICE([Searching for openssl/evp.h in $i])
+ 		CPPFLAGS="$NTPSSL_SAVED_CPPFLAGS -I$i"
++		LIBS="$ntp_ssl_libs $NTPSSL_SAVED_LIBS"
+ 		dnl force uncached AC_CHECK_HEADER
+ 		AS_UNSET([ac_cv_header_openssl_evp_h])
+ 		AC_CHECK_HEADER(
+@@ -503,8 +510,9 @@ case "$ntp_openssl:$ntp_ssl_libdir" in
+ 	     $host:no)
+ 		AC_MSG_FAILURE(
+ [Unable to run program using crypto, check openssl.pc
+-or libcrypto.pc are in PKG_CONFIG_PATH, or provide the
+- --with-openssl-libdir=/some/path option to configure.]
++or libcrypto.pc are in PKG_CONFIG_PATH, or provide
++--with-openssl-libdir=/some/path/lib and
++--with-openssl-incdir=/some/path/include options to configure.]
+ 		)
+ 	    esac
+ 	esac
+@@ -675,7 +683,7 @@ case "$ntp_openssl" in
+     dnl for us because we do not want to require OpenSSL 3 yet.
+     dnl The deprecation warnings clutter up the build output
+     dnl encouraging the habit of ignoring warnings.
+-    dnl So, tell it to the hand, OpenSSL deprecation warnings...
++    dnl So for now, disable OpenSSL deprecation warnings.
+     AC_DEFINE([OPENSSL_SUPPRESS_DEPRECATED], [1],
+ 	      [Suppress OpenSSL 3 deprecation warnings])
+     dnl We don't want -Werror for the EVP_MD_do_all_sorted check
+diff --git a/sntp/m4/openldap-thread-check.m4 b/sntp/m4/openldap-thread-check.m4
+index 7768a5c..06401af 100644
+--- a/sntp/m4/openldap-thread-check.m4
++++ b/sntp/m4/openldap-thread-check.m4
+@@ -262,10 +262,8 @@ pthread_rwlock_t rwlock;
+ 				dnl save the flags
+ 				AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+ #include <pthread.h>
+-#ifndef NULL
+-#define NULL (void*)0
+-#endif
+-]], [[pthread_detach(NULL);]])],[ol_cv_func_pthread_detach=yes],[ol_cv_func_pthread_detach=no])
++pthread_t thread;
++]], [[pthread_detach(thread);]])],[ol_cv_func_pthread_detach=yes],[ol_cv_func_pthread_detach=no])
+ 			])
+ 
+ 			if test $ol_cv_func_pthread_detach = no ; then
+diff --git a/sntp/tests/keyFile.c b/sntp/tests/keyFile.c
+index af5acc7..0f825c3 100644
+--- a/sntp/tests/keyFile.c
++++ b/sntp/tests/keyFile.c
+@@ -28,8 +28,8 @@ CompareKeys(
+ 		return FALSE;
+ 	}
+ 	if (expected.key_len != actual.key_len) {
+-		printf("Expected key_len: %d but was: %d\n",
+-		       expected.key_len, actual.key_len);
++		printf("Expected key_len: %lu but was: %lu\n",
++		       (u_long)expected.key_len, (u_long)actual.key_len);
+ 		return FALSE;
+ 	}
+ 	if (strcmp(expected.typen, actual.typen) != 0) {
+diff --git a/sntp/tests/packetProcessing.c b/sntp/tests/packetProcessing.c
+index 0e7fede..be1bced 100644
+--- a/sntp/tests/packetProcessing.c
++++ b/sntp/tests/packetProcessing.c
+@@ -81,7 +81,7 @@ PrepareAuthenticationTest(
+ 	key_ptr->next = NULL;
+ 	key_ptr->key_id = key_id;
+ 	key_ptr->key_len = key_len;
+-	strncpy(key_ptr->typen, type, sizeof(key_ptr->typen));
++	strlcpy(key_ptr->typen, type, sizeof(key_ptr->typen));
+ 
+ 	TEST_ASSERT_TRUE(key_len < sizeof(key_ptr->key_seq));
+ 
+diff --git a/tests/libntp/authkeys.c b/tests/libntp/authkeys.c
+index ac44f93..901bbf8 100644
+--- a/tests/libntp/authkeys.c
++++ b/tests/libntp/authkeys.c
+@@ -55,7 +55,7 @@ tearDown(void)
+ }
+ 
+ 
+-static const int KEYTYPE = KEY_TYPE_MD5;
++static const int KEYTYPE = NID_md5;
+ static char      msgbuf[128];
+ 
+ void
+diff --git a/tests/libntp/data/ntp.keys b/tests/libntp/data/ntp.keys
+index ef634dd..bdaa8ca 100644
+--- a/tests/libntp/data/ntp.keys
++++ b/tests/libntp/data/ntp.keys
+@@ -22,6 +22,7 @@
+  8 DSA		306+^SHLV5{"v7W`U3aY
+  9 DSA-SHA	lGyKZgsI_Pi"y"8JAT98
+ 10 SHA		2:VO]Q5u%/b&}.<P?T~9
++11 SHA256	pth`LC__7"9_+R}hrn9d
+ 
+ 51 AES128CMAC 	d0cd9f3ee181769ca7cccaada09f093c5fe8e628
+ 52 MD4		7080bc47eea6b379b2ff841805a144fb4a241a16
+@@ -33,3 +34,4 @@
+ 58 DSA		7ce5deea7569d7423d5e1b497c8eb3bfeff852d5
+ 59 DSA-SHA	9fd568e8f371deae54a65bc50b52bbe1f6529589
+ 60 SHA		ce85046978a4df8366e102c4f1267399bbc25737
++61 SHA256	ba767141a68f8d6229c7bdfd2a9cd95a06854195
+diff --git a/tests/libntp/digests.c b/tests/libntp/digests.c
+index 10b9d2c..9588f1c 100644
+--- a/tests/libntp/digests.c
++++ b/tests/libntp/digests.c
+@@ -111,8 +111,7 @@ do {									\
+ 									\
+ 	res_sz = authencrypt((key), pkt, pkt_sz);			\
+ 	if (0 == res_sz) {						\
+-		TEST_IGNORE_MESSAGE("Likely OpenSSL 3 failed digest "	\
+-				    "init.");				\
++		TEST_IGNORE_MESSAGE("authencrypt failure");		\
+ 		return;							\
+ 	}								\
+ 	TEST_ASSERT_EQUAL_UINT((u_int)((exp_sz) + KEY_MAC_LEN), res_sz);\
+@@ -497,6 +496,45 @@ void test_Digest_SHA(void)
+ }
+ 
+ 
++#define SHA256_KEYID		11
++#undef KEYID_A
++#define KEYID_A			SHA256_KEYID
++#undef DG_SZ
++#define DG_SZ			20
++#undef KEYID_B
++#define KEYID_B			(KEYID_A + HEX_KEYID_OFFSET)
++void test_Digest_SHA256(void);
++void test_Digest_SHA256(void)
++{
++#ifdef OPENSSL
++	u_char expectedA[MAX_MAC_LEN] =
++		{
++			0, 0, 0, KEYID_A,
++			0x3c, 0xbf, 0xff, 0xf4, 
++			0x11, 0x3e, 0xb8, 0xe3, 
++			0xe4, 0xc5, 0x09, 0x3c, 
++			0xa1, 0x6b, 0x8c, 0x48, 
++			0x21, 0x0d, 0x67, 0x1a
++		};
++	u_char expectedB[MAX_MAC_LEN] =
++		{
++			0, 0, 0, KEYID_B,
++			0x68, 0xa9, 0xd9, 0xf3, 
++			0x06, 0x97, 0x80, 0x0a, 
++			0xa4, 0x1d, 0x51, 0x3a, 
++			0x1a, 0x41, 0x1e, 0x93, 
++			0x4a, 0xb6, 0x96, 0x71
++		};
++
++	TEST_ASSERT(setup);
++	TEST_ONE_DIGEST(KEYID_A, DG_SZ, expectedA);
++	TEST_ONE_DIGEST(KEYID_B, DG_SZ, expectedB);
++#else	/* ! OPENSSL follows  */
++	TEST_IGNORE_MESSAGE("Skipping, no OPENSSL");
++#endif
++}
++
++
+ /*
+  * Dump a MAC in a form easy to cut and paste into the expected declaration.
+  */
+diff --git a/tests/libntp/run-digests.c b/tests/libntp/run-digests.c
+index bc56f1c..fd062f5 100644
+--- a/tests/libntp/run-digests.c
++++ b/tests/libntp/run-digests.c
+@@ -43,6 +43,7 @@ extern void test_Digest_SHAKE128(void);
+ extern void test_Digest_DSA(void);
+ extern void test_Digest_DSA_SHA(void);
+ extern void test_Digest_SHA(void);
++extern void test_Digest_SHA256(void);
+ 
+ 
+ //=======Suite Setup=====
+@@ -81,6 +82,7 @@ int main(int argc, char *argv[])
+   RUN_TEST(test_Digest_DSA, 390);
+   RUN_TEST(test_Digest_DSA_SHA, 429);
+   RUN_TEST(test_Digest_SHA, 468);
++  RUN_TEST(test_Digest_SHA256, 507);
+ 
+   return (UnityEnd());
+ }
+diff --git a/tests/libntp/ssl_init.c b/tests/libntp/ssl_init.c
+index d42b559..127a9ea 100644
+--- a/tests/libntp/ssl_init.c
++++ b/tests/libntp/ssl_init.c
+@@ -25,7 +25,7 @@ void test_CMACKeyName(void);
+ // keytype_from_text()
+ void
+ test_MD5KeyTypeWithoutDigestLength(void) {
+-	TEST_ASSERT_EQUAL(KEY_TYPE_MD5, keytype_from_text("MD5", NULL));
++	TEST_ASSERT_EQUAL(NID_md5, keytype_from_text("MD5", NULL));
+ }
+ 
+ void
+@@ -33,7 +33,7 @@ test_MD5KeyTypeWithDigestLength(void) {
+ 	size_t digestLength;
+ 	size_t expected = MD5_LENGTH;
+ 
+-	TEST_ASSERT_EQUAL(KEY_TYPE_MD5, keytype_from_text("MD5", &digestLength));
++	TEST_ASSERT_EQUAL(NID_md5, keytype_from_text("MD5", &digestLength));
+ 	TEST_ASSERT_EQUAL(expected, digestLength);
+ }
+ 
+@@ -71,7 +71,7 @@ test_CMACKeyTypeWithDigestLength(void) {
+ // keytype_name()
+ void
+ test_MD5KeyName(void) {
+-	TEST_ASSERT_EQUAL_STRING("MD5", keytype_name(KEY_TYPE_MD5));
++	TEST_ASSERT_EQUAL_STRING("MD5", keytype_name(NID_md5));
+ }
+ 
+ 
+-- 
+2.51.0
+

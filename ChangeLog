@@ -12,6 +12,42 @@
 * Author attribution updates
 
 ---
+
+* [Bug 3943] 4.2.8p18 ignores link-local IPv6 server. <hart@ntp.org>
+* [Bug 3942] DECL_SYSCALL detection does not work on illumos. <hart@ntp.org>
+* [Bug 3940] ntpd 4.2.8p18 regression from p17 for digests longer than 160
+             bits. <hart@ntp.org>
+* [Bug 3933] Restrict structure misaligned on SPARC64. <hart@ntp.org>
+* [Bug 3932] Ignore teredo interfaces in Windows ntpd. <hart@ntp.org>
+* [Bug 3931] Libopts is not respecting VPATH. <hart@ntp.org>
+* [Bug 3930] Windows build mkver.bat races itself. <hart@ntp.org>
+* [Bug 3929] 4.2.8p18 -Werror -Wincompatible-pointer-types breaks w/md5.h.
+             Wrap MD5Update() calls for varying declarations.  <hart@ntp.org>
+* [Bug 3928] ntpd 4.2.8p18 crash when bringing up net interface fails.
+             <hart@ntp.org>
+* [Bug 3927] 4.2.8p18 configure reverses -L and -l in $LIBS for OpenSSL test.
+             Reported by Brian Utterback. <hart@ntp.org>
+* [Bug 3926] pthread_detach() not detected with gcc 14, clang 16.
+             Use pthread_t arg in openldap-thread-check.m4. <hart@ntp.org>
+* [Bug 3925] ntpd on Windows 8 and later doesn't set CMOS clock at shutdown.
+             <hart@ntp.org>
+* [Bug 3924] Windows ntpd gives up on DNS too quickly at OS startup.
+             Increase max. DNS retry interval from 32 to 1024 seconds.
+             <hart@ntp.org>
+* [Bug 3877] 4.2.8p16 client rejects server response with zero ppoll.
+             <hart@ntp.org>
+* Display SSL shared library version number in human form. <hart@ntp.org>          
+* Reorder restrict_u layout to improve alignment on all platforms.
+  <hart@ntp.org>
+* Correct match_restrict[46]_addr() logic expiring temporary restrictions.
+  <hart@ntp.org>
+* Rename is_ip_address() to sau_from_string() to better reflect use.
+  <hart@ntp.org>
+* Remove include/safecast.h <hart@ntp.org>
+* Fix bug in m4sh macro NTP_FACILITYNAMES that meant detection always failed.
+  <hart@ntp.org>
+
+---
 (4.2.8p18) 2024/05/25 Released by Harlan Stenn <stenn@ntp.org>
 
 * [Bug 3918] Tweak openssl header/library handling. <stenn@ntp.org>
@@ -98,7 +134,7 @@
 * Fix build on older FreeBSD lacking sys/procctl.h. <hart@ntp.org>
 * Disable [Bug 3627] workaround on newer FreeBSD which has the kernel fix
   that makes it unnecessary, re-enabling ASLR stack gap. <hart@ntp.org>
-* Use NONEMPTY_COMPILATION_UNIT in more conditionally-compiled files.
+* Use NONEMPTY_TRANSLATION_UNIT in more conditionally-compiled files.
 * Remove useless pointer to Windows Help from system error messages.
 * Avoid newlines within Windows error messages. <hart@ntp.org>
 * Ensure unique association IDs if wrapped. <hart@ntp.org>

@@ -43,6 +43,7 @@ extern void test_Digest_SHAKE128(void);
 extern void test_Digest_DSA(void);
 extern void test_Digest_DSA_SHA(void);
 extern void test_Digest_SHA(void);
+extern void test_Digest_SHA256(void);
 
 
 //=======Suite Setup=====
@@ -81,6 +82,7 @@ int main(int argc, char *argv[])
   RUN_TEST(test_Digest_DSA, 390);
   RUN_TEST(test_Digest_DSA_SHA, 429);
   RUN_TEST(test_Digest_SHA, 468);
+  RUN_TEST(test_Digest_SHA256, 507);
 
   return (UnityEnd());
 }

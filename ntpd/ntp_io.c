@@ -41,7 +41,6 @@
 #include "timevalops.h"
 #include "timespecops.h"
 #include "ntpd-opts.h"
-#include "safecast.h"
 
 /* Don't include ISC's version of IPv6 variables and structures */
 #define ISC_IPV6_H 1
@@ -1116,7 +1115,7 @@ add_nic_rule(
 	} else if (MATCH_IFADDR == match_type) {
 		REQUIRE(NULL != if_name);
 		/* set rule->addr */
-		is_ip = is_ip_address(if_name, AF_UNSPEC, &rule->addr);
+		is_ip = sau_from_string(if_name, AF_UNSPEC, &rule->addr);
 		REQUIRE(is_ip);
 	} else
 		REQUIRE(NULL == if_name);
@@ -1736,6 +1735,17 @@ update_interfaces(
 
 		DPRINT_INTERFACE(4, (&enumep, "examining ", "\n"));
 
+#ifdef SYS_WINNT
+		/*
+		 * https://bugs.ntp.org/3932 Ignore teredo IFs in Windows ntpd
+		 */
+		static const char szTeredo[] = "Teredo Tunneling Pseudo-Interfa";
+		if (!memcmp(szTeredo, enumep.name,
+			    min(sizeof szTeredo, sizeof enumep.name))) {
+			continue;
+		}
+#endif
+
 		/*
 		 * Check if and how we are going to use the interface.
 		 */
@@ -1917,15 +1927,14 @@ update_interfaces(
 			}
 			new_interface_found = TRUE;
 			DPRINT_INTERFACE(3,
-				(ep, "updating ", " new - created\n"));
-		}
-		else {
+				(ep2, "updating ", " new - created\n"));
+		} else {
 			DPRINT_INTERFACE(3,
-				(ep, "updating ", " new - FAILED"));
+				(ep2, "updating ", " new - FAILED"));
 
 			msyslog(LOG_ERR,
 				"cannot bind address %s",
-				stoa(&ep->sin));
+				stoa(&ep2->sin));
 		}
 		free(ep2);
 	}
@@ -3205,7 +3214,7 @@ sendpkt(
 	}
 
 	do {
-		if (INT_LL_OF_GLOB & src->flags) {
+		if (ismcast && INT_LL_OF_GLOB & src->flags) {
 			/* avoid duplicate multicasts on same IPv6 net */
 			goto loop;
 		}

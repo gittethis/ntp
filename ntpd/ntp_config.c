@@ -3380,7 +3380,7 @@ config_nic_rules(
 			pchSlash = strchr(if_name, '/');
 			if (pchSlash != NULL)
 				*pchSlash = '\0';
-			if (is_ip_address(if_name, AF_UNSPEC, &addr)) {
+			if (sau_from_string(if_name, AF_UNSPEC, &addr)) {
 				match_type = MATCH_IFADDR;
 				if (pchSlash != NULL
 				    && 1 == sscanf(pchSlash + 1, "%d",
@@ -4425,8 +4425,8 @@ config_peers(
 		 * Note that if we're told to add the peer here, we
 		 * do that regardless of ippeerlimit.
 		 */
-		if (is_ip_address(*cmdline_servers, AF_UNSPEC,
-				  &peeraddr)) {
+		if (sau_from_string(*cmdline_servers, AF_UNSPEC,
+				    &peeraddr)) {
 
 			SET_PORT(&peeraddr, NTP_PORT);
 			if (is_sane_resolved_address(&peeraddr,
@@ -4503,8 +4503,9 @@ config_peers(
 		 * proceed in the mainline with it.  Otherwise, hand
 		 * the hostname off to the blocking child.
 		 */
-		} else if (is_ip_address(curr_peer->addr->address,
-				  curr_peer->addr->type, &peeraddr)) {
+		} else if (sau_from_string(curr_peer->addr->address,
+					   curr_peer->addr->type, 
+					   &peeraddr)) {
 
 			SET_PORT(&peeraddr, NTP_PORT);
 			if (is_sane_resolved_address(&peeraddr,
@@ -4581,18 +4582,22 @@ peer_name_resolved(
 	u_short			af;
 	const char *		fam_spec;
 
-	(void)gai_errno;
-	(void)service;
-	(void)hints;
+	UNUSED_ARG(gai_errno);
+	UNUSED_ARG(service);
 	ctx = context;
 
-	DPRINTF(1, ("peer_name_resolved(%s) rescode %d\n", name, rescode));
+	af = ctx->family;
+	fam_spec = (AF_INET6 == af)
+			? " (AAAA)"
+			: (AF_INET == af)
+				? " (A)"
+				: "";
 
 	if (rescode) {
 		free(ctx);
 		msyslog(LOG_ERR,
-			"giving up resolving host %s: %s (%d)",
-			name, gai_strerror(rescode), rescode);
+			"giving up resolving host %s%s: %s (%d)",
+			name, fam_spec, gai_strerror(rescode), rescode);
 		return;
 	}
 
@@ -4601,18 +4606,9 @@ peer_name_resolved(
 		memcpy(&peeraddr, res->ai_addr, res->ai_addrlen);
 		if (is_sane_resolved_address(&peeraddr,
 					     ctx->host_mode)) {
-			NLOG(NLOG_SYSINFO) {
-				af = ctx->family;
-				fam_spec = (AF_INET6 == af)
-					       ? "(AAAA) "
-					       : (AF_INET == af)
-						     ? "(A) "
-						     : "";
-				msyslog(LOG_INFO, "DNS %s %s-> %s",
+			LOGIF(SYSINFO, (LOG_INFO, "DNS %s%s -> %s",
 					name, fam_spec,
-					stoa(&peeraddr));
-			}
-
+					stoa(&peeraddr)));
 			/* 
 			 * peer_clear needs to know if this association was specified
 			 * in the startup configuration file to set the next poll time.
@@ -5623,7 +5619,7 @@ getnetnum(
 		AF_INET == AF(addr) ||
 		AF_INET6 == AF(addr));
 
-	if (!is_ip_address(num, AF(addr), addr)) {
+	if (!sau_from_string(num, AF(addr), addr)) {
 		return 0;
 	}
 # ifdef ISC_PLATFORM_HAVESALEN

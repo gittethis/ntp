@@ -111,8 +111,7 @@ do {									\
 									\
 	res_sz = authencrypt((key), pkt, pkt_sz);			\
 	if (0 == res_sz) {						\
-		TEST_IGNORE_MESSAGE("Likely OpenSSL 3 failed digest "	\
-				    "init.");				\
+		TEST_IGNORE_MESSAGE("authencrypt failure");		\
 		return;							\
 	}								\
 	TEST_ASSERT_EQUAL_UINT((u_int)((exp_sz) + KEY_MAC_LEN), res_sz);\
@@ -486,6 +485,45 @@ void test_Digest_SHA(void)
 			0xc6, 0x94, 0x24, 0xa4,
 			0x84, 0x76, 0xc7, 0xc9,
 			0xdd, 0x80, 0x80, 0x89
+		};
+
+	TEST_ASSERT(setup);
+	TEST_ONE_DIGEST(KEYID_A, DG_SZ, expectedA);
+	TEST_ONE_DIGEST(KEYID_B, DG_SZ, expectedB);
+#else	/* ! OPENSSL follows  */
+	TEST_IGNORE_MESSAGE("Skipping, no OPENSSL");
+#endif
+}
+
+
+#define SHA256_KEYID		11
+#undef KEYID_A
+#define KEYID_A			SHA256_KEYID
+#undef DG_SZ
+#define DG_SZ			20
+#undef KEYID_B
+#define KEYID_B			(KEYID_A + HEX_KEYID_OFFSET)
+void test_Digest_SHA256(void);
+void test_Digest_SHA256(void)
+{
+#ifdef OPENSSL
+	u_char expectedA[MAX_MAC_LEN] =
+		{
+			0, 0, 0, KEYID_A,
+			0x3c, 0xbf, 0xff, 0xf4, 
+			0x11, 0x3e, 0xb8, 0xe3, 
+			0xe4, 0xc5, 0x09, 0x3c, 
+			0xa1, 0x6b, 0x8c, 0x48, 
+			0x21, 0x0d, 0x67, 0x1a
+		};
+	u_char expectedB[MAX_MAC_LEN] =
+		{
+			0, 0, 0, KEYID_B,
+			0x68, 0xa9, 0xd9, 0xf3, 
+			0x06, 0x97, 0x80, 0x0a, 
+			0xa4, 0x1d, 0x51, 0x3a, 
+			0x1a, 0x41, 0x1e, 0x93, 
+			0x4a, 0xb6, 0x96, 0x71
 		};
 
 	TEST_ASSERT(setup);
