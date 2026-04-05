@@ -1,7 +1,7 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2015
-VisualStudioVersion = 14.0.24720.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11222.15 d18.0
 MinimumVisualStudioVersion = 12.0.31101.0
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ntpd", "ntpd\ntpd.vcxproj", "{CB61F8BF-9637-495C-9087-E8664B400CE0}"
 EndProject
@@ -20,6 +20,8 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "keyword-gen", "ntpd-keyword-gen\ntpd-keyword-gen.vcxproj", "{1B814CC1-EAD4-4A13-B29C-A67B23C9845A}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "loopback-ppsapi-provider", "loopback-pps\loopback-ppsapi-provider.vcxproj", "{1ACE209D-D56E-450B-8711-B73E4ACFC38E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{C37642DF-DC34-401C-9FC9-FFF877F966BE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -162,5 +164,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5C83B229-38A3-49C3-A83B-12B5B3D78FC2}
 	EndGlobalSection
 EndGlobal

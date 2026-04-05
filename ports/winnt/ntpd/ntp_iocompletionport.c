@@ -55,8 +55,6 @@ Juergen Perlinger (perlinger@ntp.org) Feb 2012
 # include <config.h>
 #endif
 
-#ifdef HAVE_IO_COMPLETION_PORT
-
 #include <stddef.h>
 #include <stdio.h>
 #include <process.h>
@@ -72,15 +70,13 @@ Juergen Perlinger (perlinger@ntp.org) Feb 2012
 
 
 #define CONTAINEROF(p, type, member) \
-	((type *)((char *)(p) - offsetof(type, member)))
+	((type *) ((char *)(p) - offsetof(type, member)))
 
 enum io_packet_handling {
 	PKT_OK,
 	PKT_DROP,
 	PKT_SOCKET_ERROR
 };
-
-
 
 static const char * const st_packet_handling[3] = {
 	"accepted",
@@ -100,7 +96,6 @@ static	BOOL __fastcall QueueSerialRead(IoCtx_t *, recvbuf_t *);
 static	BOOL __fastcall QueueRawSerialRead(IoCtx_t *, recvbuf_t *);
 static  BOOL __fastcall QueueSocketRecv(IoCtx_t *, recvbuf_t *);
 
-
 /* High-level IO callback functions */
 static	void OnSocketRecv           (ULONG_PTR, IoCtx_t *);
 static	void OnSocketSend           (ULONG_PTR, IoCtx_t *);
@@ -112,25 +107,25 @@ static	void OnSerialWriteComplete  (ULONG_PTR, IoCtx_t *);
 /* worker pool offload functions */
 static DWORD WINAPI OnSerialReadWorker(void * ctx);
 
-
 /* keep a list to traverse to free memory on debug builds */
 #ifdef DEBUG
 static void free_io_completion_port_mem(void);
 #endif
 
-
+/* variables */
 	HANDLE	WaitableExitEventHandle;
 	HANDLE	WaitableIoEventHandle;
 static	HANDLE	hndIOCPLPort;
 static	HANDLE	hMainThread;
 static	HANDLE	hMainRpcDone;
+static	HANDLE	hIoCompletionThread;
+static	UINT	tidCompletionThread;
+static	LPFN_WSARECVMSG	pWSARecvMsg;
+static	const GUID	guidWSARecvMsg = WSAID_WSARECVMSG;
+static	NotifyIpInterfaceChange_ptr	pNotifyIpInterfaceChange;
 
 DWORD	ActiveWaitHandles;
 HANDLE	WaitHandles[4];
-
-NotifyIpInterfaceChange_ptr	pNotifyIpInterfaceChange;
-
-
 
 /*
  * -------------------------------------------------------------------
@@ -151,23 +146,15 @@ static size_t	s_SockRecvSched = 1;	/* possibly adjusted later */
  * -------------------------------------------------------------------
  * The IO completion thread and support functions
  *
- * There is only one completion thread, because it is locked to the same
- * core as the time interpolation. Having more than one causes core
- * contention and is not useful.
- * -------------------------------------------------------------------
- */
-static HANDLE hIoCompletionThread;
-static UINT   tidCompletionThread;
-
-/*
- * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
- * The IO completion worker thread
- *
  * Note that this thread does not enter an alertable wait state and that
  * the only waiting point is the IO completion port. If stopping this
  * thread with a special queued result packet does not work,
  * 'TerminateThread()' is the only remaining weapon in the arsenal. A
  * dangerous weapon -- it's like SIGKILL.
+ * 
+ * There is only one completion thread, because it is locked to the same
+ * core as the time interpolation. Having more than one causes core
+ * contention and is not useful.
  */
 static unsigned WINAPI
 iocompletionthread(
@@ -211,7 +198,7 @@ iocompletionthread(
 		} else {
 			err = GetLastError();
 		}
-		if (pol == NULL) {
+		if (NULL == pol) {
 			DPRINTF(2, ("Overlapped IO Thread Exiting\n"));
 			break; /* fail */
 		}
@@ -236,6 +223,8 @@ init_io_completion_port(void)
 	FARPROC		pfn;
 	HANDLE		hNotify;
 	HANDLE		hDll;
+	SOCKET		s;
+	DWORD		dwScratch;
 
 #   ifdef DEBUG
 	atexit(&free_io_completion_port_mem);
@@ -280,7 +269,6 @@ init_io_completion_port(void)
 	 */
 	addremove_io_semaphore = &ntpd_addremove_semaphore;
 
-	/* Avoid periodic endpoint scans if we are getting change notifications */
 	hDll = LoadLibrary("iphlpapi");
 	pfn = GetProcAddress(hDll, "NotifyIpInterfaceChange");
 	if (NULL != pfn) {
@@ -293,11 +281,28 @@ init_io_completion_port(void)
 			FALSE,
 			&hNotify
 			);
+		/* Avoid periodic endpoint scans if we are getting change notifications */
 		if (NULL != hNotify) {
 			/* some systems get notifications minutes to hours late */
 			/* no_periodic_scan = TRUE; */
 		}
 	}
+
+	/* Get pointer to WSARecvMsg(), exposed as an extension function */
+	s = socket(AF_INET, SOCK_DGRAM, 0);
+	if (SOCKET_ERROR == WSAIoctl(s,
+				     SIO_GET_EXTENSION_FUNCTION_POINTER,
+				     (void *)&guidWSARecvMsg,
+				     sizeof(guidWSARecvMsg),
+				     (void *)&pWSARecvMsg,
+				     sizeof(pWSARecvMsg),
+				     &dwScratch,
+				     NULL,
+				     NULL)) {
+		msyslog(LOG_ERR, "Fatal: WSAIoctl for WSARecvMsg failed: %m");
+		exit(EX_SOFTWARE);
+	}
+	closesocket(s);
 
 	/* Create a true handle for the main thread (APC processing) */
 	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(),
@@ -308,7 +313,7 @@ init_io_completion_port(void)
 	hIoCompletionThread = (HANDLE)_beginthreadex(
 		NULL, 
 		0, 
-		iocompletionthread, 
+		&iocompletionthread, 
 		NULL, 
 		CREATE_SUSPENDED,
 		&tidCompletionThread);
@@ -467,24 +472,31 @@ free_io_completion_port_mem(void)
 {
 	/* At the moment, do absolutely nothing. Returning memory here
 	 * requires NO PENDING OVERLAPPED OPERATIONS AT ALL at this
-	 * point in time, and as long we cannot be reasonable sure about
+	 * point in time, and as long we cannot be reasonably sure about
 	 * that the simple advice is:
 	 *
 	 * HANDS OFF!
+	 * 
+	 * We can be sure there are no pending overlapped operations if the
+	 * overlapped I/O thread has terminated, as that automatically
+	 * cancels all I/O pending that was issued by that thread.  That can
+	 * be accomplished by changing this function to be called from
+	 * uninit_io_completion_port() rather than as an atexit() handler.
 	 */
 }
 #endif	/* DEBUG */
 
-void
+
+static void
 iocpl_notify(
 	IoHndPad_T *	iopad,
 	IoCompleteFunc	pfunc,
 	UINT_PTR	fdn
 	)
 {
-	IoCtx_t	xf;
+	IoCtx_t		xf;
 
-	memset(&xf, 0, sizeof(xf));
+	ZERO(xf);
 	xf.iopad    = iopad;
 	xf.ppswake  = hMainRpcDone;
 	xf.onIoDone = pfunc;
@@ -545,10 +557,12 @@ LogIoError(
 	 */
 	BOOL   dynbuf = FALSE;
 	char * msgbuf = NTstrerror(err, &dynbuf);
+
 	msyslog(LOG_ERR, "%s: hnd=%p, err=%u, '%s'",
 		(msg ? msg : rmsg), hnd, err, msgbuf);
-	if (dynbuf)
+	if (dynbuf) {
 		LocalFree(msgbuf);
+	}
 }
 
 /* -------------------------------------------------------------------
@@ -575,8 +589,8 @@ IoResultCheck(
 		 */
 	case ERROR_UNEXP_NET_ERR:
 		if (hMainThread) {
-			QueueUserAPC(apcOnUnexpectedNetworkError,
-				hMainThread, ctx->io.sfd);
+			QueueUserAPC(&apcOnUnexpectedNetworkError,
+				     hMainThread, ctx->io.sfd);
 		}
 		IoCtxRelease(ctx);
 		return FALSE;
@@ -611,29 +625,32 @@ getRioFromIoCtx(
 	 */
 	RIO_t *		rio   = NULL;
 	IoHndPad_T *	iopad = ctx->iopad;
+
 	if (NULL != iopad) {
-		rio = iopad->rsrc.rio;
-		if (key != iopad->rsrc.key)
-			rio = NULL;
-		else if (ctx->io.hnd != iopad->handles[0])
-			rio = NULL;
+		if (   key == iopad->rsrc.key
+		    && ctx->io.hnd == iopad->handles[0]) {
+			rio = iopad->rsrc.rio;
+		}
 	}
-	if (rio != NULL) switch (ctx->errCode) {
+	if (rio != NULL) {
+		switch (ctx->errCode) {
 		/* When we got cancelled, don't spill messages */
-	case ERROR_INVALID_PARAMETER:	/* handle already closed (clock) */
-	case ERROR_OPERATION_ABORTED:	/* handle closed while wait      */
-	case WSAENOTSOCK:	/* handle already closed (sock?) */
-		ctx->errCode = ERROR_SUCCESS;
-		rio = NULL;
-	case ERROR_SUCCESS:		/* all is good */
-		break;
-	default:
-		/* log error, but return -- caller has to handle this! */
-		LogIoError(msg, ctx->io.hnd, ctx->errCode);
-		break;
+		case ERROR_INVALID_PARAMETER:	/* handle already closed (clock) */
+		case ERROR_OPERATION_ABORTED:	/* handle closed while wait      */
+		case WSAENOTSOCK:	/* handle already closed (sock?) */
+			ctx->errCode = ERROR_SUCCESS;
+			rio = NULL;
+		case ERROR_SUCCESS:		/* all is good */
+			break;
+		default:
+			/* log error, but return -- caller has to handle this! */
+			LogIoError(msg, ctx->io.hnd, ctx->errCode);
+			break;
+		}
 	}
-	if (rio == NULL)
+	if (NULL == rio) {
 		IoCtxRelease(ctx);
+	}
 	return rio;
 }
 
@@ -655,20 +672,21 @@ getEndptFromIoCtx(
 	 *
 	 * !Note! Since we use the lowest bit of the key to distinguish
 	 * between regular and broadcast socket, we must make sure the
-	 * LSB is not used in the reverse-link check. Hence we shift
-	 * it out in both the input key and the registered source.
+	 * LSB is not used in the reverse-link check.  Hence we mask it
+	 * out in both the input key and the registered source.
 	 */
 	endpt *		ep    = NULL;
 	IoHndPad_T *	iopad = ctx->iopad;
+
 	if (iopad != NULL) {
-		ep = iopad->rsrc.ept;
-		if ((key >> 1) != (iopad->rsrc.key >> 1))
-			ep = NULL;
-		else if (ctx->io.hnd != iopad->handles[key & 1])
-			ep = NULL;
+		if (   (key & ~1) == (iopad->rsrc.key & ~1)
+		    && ctx->io.hnd == iopad->handles[key & 1]) {
+			ep = iopad->rsrc.ept;
+		}
 	}
-	if (ep == NULL)
+	if (NULL == ep) {
 		IoCtxRelease(ctx);
+	}
 	return ep;
 }
 
@@ -686,10 +704,12 @@ socketErrorCheck(
 	case ERROR_SUCCESS:		/* all is good */
 		retCode = PKT_OK;
 		break;
+
 	case ERROR_UNEXP_NET_ERR:
-		if (hMainThread)
-			QueueUserAPC(apcOnUnexpectedNetworkError,
-				hMainThread, ctx->io.sfd);
+		if (hMainThread) {
+			QueueUserAPC(&apcOnUnexpectedNetworkError,
+				     hMainThread, ctx->io.sfd);
+		}
 	case ERROR_INVALID_PARAMETER:	/* handle already closed (clock?)*/
 	case ERROR_OPERATION_ABORTED:	/* handle closed while wait      */
 	case WSAENOTSOCK            :	/* handle already closed (sock)  */
@@ -700,8 +720,8 @@ socketErrorCheck(
 	 * We should not get this, but we do, unfortunately. Obviously
 	 * Windows insists in terminating one overlapped I/O request
 	 * when it receives a TTL-expired ICMP message, and since the
-	 * write that caused it is long finished, this unfortunately
-	 * hits the pending receive.
+	 * write that caused it is long finished, this typically hits
+	 * a pending receive.
 	 *
 	 * The only way out seems to be to silently ignore this error
 	 * and restart another round, in the hope this condition does
@@ -780,7 +800,7 @@ QueueSerialWait(
 
 	BOOL	rc;
 
-	lpo->onIoDone = OnSerialWaitComplete;
+	lpo->onIoDone = &OnSerialWaitComplete;
 	lpo->recv_buf = buff;
 	lpo->flRawMem = 0;
 
@@ -813,14 +833,14 @@ OnSerialWaitComplete(
 	/* start next IO and leave if we hit an error */
 	if (lpo->errCode != ERROR_SUCCESS) {
 		memset(&lpo->aux, 0, sizeof(lpo->aux));
-		IoCtxStartChecked(lpo, QueueSerialWait, lpo->recv_buf);
+		IoCtxStartChecked(lpo, &QueueSerialWait);
 		return;
 	}
 
 #ifdef DEBUG
 	if (~(EV_RXFLAG | EV_RLSD | EV_RXCHAR) & lpo->aux.com_events) {
 		msyslog(LOG_ERR, "WaitCommEvent returned unexpected mask %x",
-			lpo->aux.com_events);
+			(u_int)lpo->aux.com_events);
 		exit(-1);
 	}
 #endif
@@ -859,7 +879,7 @@ OnSerialWaitComplete(
 			 * have them before VS2010.
 			 */
 			covc   = dev->cov_count + 1u;
-			ppsbuf = dev->pps_buff + (covc & PPS_QUEUE_MSK);
+			ppsbuf = &dev->pps_buff[covc & PPS_QUEUE_MSK];
 			InterlockedExchange((PLONG)&ppsbuf->cov_count, covc);
 			ppsbuf->data = dev->pps_data;
 			InterlockedExchange((PLONG)&dev->cov_count, covc);
@@ -891,13 +911,13 @@ OnSerialWaitComplete(
 	if (EV_RXFLAG & lpo->aux.com_events) {		/* line discipline */
 		lpo->aux.FlagTime = lpo->aux.RecvTime;
 		lpo->aux.flTsFlag = 1;
-		IoCtxStartChecked(lpo, QueueSerialRead, lpo->recv_buf);
+		IoCtxStartChecked(lpo, &QueueSerialRead);
 	} else if (EV_RXCHAR & lpo->aux.com_events) {	/* raw discipline */
 		lpo->aux.FlagTime = lpo->aux.RecvTime;
 		lpo->aux.flTsFlag = 1;
-		IoCtxStartChecked(lpo, QueueRawSerialRead, lpo->recv_buf);
+		IoCtxStartChecked(lpo, &QueueRawSerialRead);
 	} else {					/* idle... */
-		IoCtxStartChecked(lpo, QueueSerialWait, lpo->recv_buf);
+		IoCtxStartChecked(lpo, &QueueSerialWait);
 	}
 }
 
@@ -995,8 +1015,8 @@ OnSerialReadComplete(
 
 wait_again:
 	/* make sure the read is issued again */
-	memset(&lpo->aux, 0, sizeof(lpo->aux));
-	IoCtxStartChecked(lpo, QueueSerialWait, lpo->recv_buf);
+	ZERO(lpo->aux);
+	IoCtxStartChecked(lpo, QueueSerialWait);
 }
 
 
@@ -1034,7 +1054,7 @@ OnDeferredStartWait(
 	IoCtx_t *	lpo
 )
 {
-	IoCtxStartChecked(lpo, &QueueSerialWait, lpo->recv_buf);
+	IoCtxStartChecked(lpo, &QueueSerialWait);
 }
 
 /* -------------------------------------------------------------------
@@ -1161,10 +1181,10 @@ st_copy_start:
 st_pass_buffer:
 	/* if we arrive here, we can spin off another text line to the
 	 * receive queue. We use a hack to supplant the RIO pointer in
-	 * the receive buffer with the IOPAD to save us a temporary
+	 * the receive buffer with the IoHndPad to save us a temporary
 	 * workspace allocation. Note the callback owns one refcount
-	 * unit to keep the IOPAD alive! Also checking that the RIO in
-	 * the IOPAD matches the RIO in the buffer is dangerous: That
+	 * unit to keep the IoHndPad alive! Also checking that the RIO in
+	 * the IoHndPad matches the RIO in the buffer is dangerous: That
 	 * pointer is manipulated by the other threads!
 	 */
 	obuf->recv_peer = (struct peer *)iohpAttach(lpo->iopad);
@@ -1183,11 +1203,11 @@ st_read_more:
 
 st_read_fresh:
 	/* Start next round. This is deferred to the IOCPL thread, as
-	 * read access to the IOPAD is unsafe from a worker thread
+	 * read access to the IoHndPad is unsafe from a worker thread
 	 * for anything but the flags. If the IOCPL handle is gone,
 	 * just mop up the pieces.
 	 */
-	lpo->onIoDone = OnDeferredStartWait;
+	lpo->onIoDone = &OnDeferredStartWait;
 	if (   NULL == hndIOCPLPort
 	    || !PostQueuedCompletionStatus(hndIOCPLPort, 1, 0, &lpo->ol)) {
 		IoCtxRelease(lpo);
@@ -1213,7 +1233,7 @@ QueueRawSerialRead(
 	recvbuf_t *	buff
 	)
 {
-	lpo->onIoDone     = OnRawSerialReadComplete;
+	lpo->onIoDone     = &OnRawSerialReadComplete;
 	buff->recv_length = 0;
 	return QueueSerialReadCommon(lpo, buff);
 }
@@ -1243,14 +1263,14 @@ OnRawSerialReadComplete(
 		set_serial_recv_time(buff, lpo);
 		lpo->recv_buf = get_free_recv_buffer_alloc(TRUE);
 		if (lpo->recv_buf) {
-			iohpQueueLocked(lpo->iopad, iohpRefClockOK, buff);
+			iohpQueueLocked(lpo->iopad, &iohpRefClockOK, buff);
 		} else {
 			++packets_dropped; /* maybe atomic? */
 			buff->recv_length = 0;
 			lpo->recv_buf = buff;
 		}
 	}
-	IoCtxStartChecked(lpo, QueueSerialWait, lpo->recv_buf);
+	IoCtxStartChecked(lpo, &QueueSerialWait);
 }
 
 
@@ -1304,28 +1324,34 @@ async_write(
 
 	IoCtx_t *	lpo  = NULL;
 	void *		buff = NULL;
-	HANDLE		hnd  = NULL;
+	HANDLE		hnd;
 	BOOL		rc;
+	DWORD		err;
 
 	hnd = (HANDLE)_get_osfhandle(fd);
-	if (hnd == INVALID_HANDLE_VALUE)
+	SetLastError(NO_ERROR);
+	if (INVALID_HANDLE_VALUE == hnd) {
+		errno = EBADF;
 		goto fail;
-	if (NULL == (buff = IOCPLPoolMemDup(data, count, dmsg)))
+	}
+	if (   (NULL == (buff = IOCPLPoolMemDup(data, count, dmsg))
+	    || (NULL == (lpo = IoCtxAlloc(NULL, NULL))))) {
+		errno = ENOMEM;
 		goto fail;
-	if (NULL == (lpo = IoCtxAlloc(NULL, NULL)))
-		goto fail;
+	}
 
 	lpo->io.hnd    = hnd;
-	lpo->onIoDone  = OnSerialWriteComplete;
+	lpo->onIoDone  = &OnSerialWriteComplete;
 	lpo->trans_buf = buff;
 	lpo->flRawMem  = 1;
 
 	rc = WriteFile(lpo->io.hnd, lpo->trans_buf, count,
 		       NULL, &lpo->ol);
-	if (rc || IoResultCheck(GetLastError(), lpo, msgh))
+	err = GetLastError();
+	if (rc || IoResultCheck(err, lpo, msgh)) {
 		return count;	/* normal/success return */
-
-	errno = EBADF;
+	}
+	SetLastError(err);
 	return -1;
 
 fail:
@@ -1333,6 +1359,7 @@ fail:
 	IOCPLPoolFree(buff, dmsg);
 	return -1;
 }
+
 
 static void
 OnSerialWriteComplete(
@@ -1414,7 +1441,7 @@ ntp_pps_read(
 	repc = 3;
 	do {
 		covc = InterlockedExchangeAdd((PLONG)&dev->cov_count, 0);
-		ppsbuf = dev->pps_buff + (covc & PPS_QUEUE_MSK);
+		ppsbuf = &dev->pps_buff[covc & PPS_QUEUE_MSK];
 		*data = ppsbuf->data;
 		guard = InterlockedExchangeAdd((PLONG)&ppsbuf->cov_count, 0);
 		guard ^= covc;
@@ -1530,10 +1557,11 @@ io_completion_port_remove_clock_io(
 {
 	IoHndPad_T *	iopad = (IoHndPad_T*)rio->ioreg_ctx;
 
-	INSIST(hndIOCPLPort && hMainRpcDone);
+	DEBUG_INSIST(hndIOCPLPort && hMainRpcDone);
 	if (iopad)
-		iocpl_notify(iopad, OnSerialDetach, _get_osfhandle(rio->fd));
+		iocpl_notify(iopad, &OnSerialDetach, _get_osfhandle(rio->fd));
 }
+
 
 /*
  * -------------------------------------------------------------------
@@ -1541,17 +1569,18 @@ io_completion_port_remove_clock_io(
  * -------------------------------------------------------------------
  */
 
-/* Queue a receiver on a socket. Returns 0 if no buffer can be queued 
+/*
+ * Queue a receive operation on a socket.  Returns FALSE on failure.
  *
- *  Note: As per the WINSOCK documentation, we use WSARecvFrom. Using
- *	  ReadFile() is less efficient. Also, WSARecvFrom delivers
- *	  the remote network address. With ReadFile, getting this
- *	  becomes a chore.
+ * To enable timestamping, we must use WSARecvMsg(), which can provide
+ * out-of-band control data such as the NDIS kernel-mode receive timestamp.
+ * While such timestamps are only available on Windows 11 and Server 2022,
+ * WSARecvMsg() is available since Windows XP SP2 / Server 2003.
  */
 static BOOL __fastcall
 QueueSocketRecv(
 	IoCtx_t *	lpo,
-	recvbuf_t *	buff
+	recvbuf_t *	rbuf
 	)
 {
 	static const char * const msgh =
@@ -1561,31 +1590,37 @@ QueueSocketRecv(
 	DWORD	err;
 	int	rc;
 
-	lpo->onIoDone = OnSocketRecv;
-	lpo->recv_buf = buff;
-	lpo->flRawMem = 0;
-	lpo->ioFlags  = 0;
+	lpo->onIoDone = &OnSocketRecv;
+	lpo->recv_buf = rbuf;
+	lpo->flRawMem = FALSE;
 
-	buff->fd              = lpo->io.sfd;
-	buff->recv_srcadr_len = sizeof(buff->recv_srcadr);
-	buff->receiver        = receive;
-	buff->dstadr          = lpo->iopad->rsrc.ept;
+	rbuf->fd	= lpo->io.sfd;
+	rbuf->receiver	= &receive;
+	rbuf->dstadr	= lpo->iopad->rsrc.ept;
 
-	wsabuf.buf = (char *)buff->recv_buffer;
-	wsabuf.len = sizeof(buff->recv_buffer);
+	wsabuf.buf = (char *)rbuf->recv_buffer;
+	wsabuf.len = sizeof(rbuf->recv_buffer);
+
+	rbuf->wsamsg.name = &rbuf->recv_srcadr.sa;
+	rbuf->wsamsg.namelen = sizeof(rbuf->recv_srcadr);
+	rbuf->wsamsg.lpBuffers = &wsabuf;
+	rbuf->wsamsg.dwBufferCount = 1;
+	rbuf->wsamsg.Control.buf = rbuf->cmsgbuf;
+	rbuf->wsamsg.Control.len = sizeof(rbuf->cmsgbuf);
+	rbuf->wsamsg.dwFlags = 0;
 
 	do {
-		rc = WSARecvFrom(lpo->io.sfd, &wsabuf, 1, NULL, &lpo->ioFlags,
-			&buff->recv_srcadr.sa, &buff->recv_srcadr_len,
-			&lpo->ol, NULL);
+		rc = (*pWSARecvMsg)(lpo->io.sfd, &rbuf->wsamsg, NULL,
+				    &lpo->ol, NULL);
 		if (!rc) {
 			return TRUE;
 		}
-		err = (DWORD)WSAGetLastError();
+		err = GetLastError();
 	} while (WSAENETRESET == err);	/* [Bug 3784] ICMP TTL exceeded */
 
 	return IoResultCheck(err, lpo, msgh);
 }
+
 
 /* ----------------------------------------------------------------- */
 static void
@@ -1597,46 +1632,173 @@ OnSocketRecv(
 	static const char * const msgh =
 		"OnSocketRecv: receive from socket failed";
 
-	recvbuf_t *	buff	= NULL;
-	IoHndPad_T *	iopad	= NULL;
-	endpt *		ep	= NULL;
+	static LONGLONG	total_ctr_delta;
+	static u_int	ts_count;
+	static u_int	stats_dur = 3 * SECSPERHR;
+	static u_long	d_stats_reset_time;
+	recvbuf_t *	rbuf		= NULL;
+	IoHndPad_T *	iopad;
+	endpt *		ep;
 	int		rc;
+	WSACMSGHDR *	cm;
+	u_int64		recv_ctr;
+	FT_ULL		now_ctr;
+	l_fp		lfp_now;
+	LONGLONG	ctr_delta;
+	double		secs_delta;
+	double		fuzz;
+	double		combined;
+	double		total_delta;
+	l_fp		lfp_combined;
+	endpt *		rep;
+	bool 		suppress_warning;
 
 	/* order is important -- check first, then get endpoint! */
 	rc = socketErrorCheck(lpo, msgh);
 	ep = getEndptFromIoCtx(lpo, key);
 
 	/* Make sure this endpoint is not closed. */
-	if (ep == NULL)
+	if (NULL == ep ) {
 		return;
-
+	}
+	InterlockedIncrement(&handler_calls);
 	/* We want to start a new read before we process the buffer.
 	 * Since we must not use the context object once it is in
 	 * another IO, we go through some pains to read everything
 	 * before going out for another read request.
-	 * We also need an extra hold to the IOPAD structure.
+	 * We also need an extra reference to the IoHndPad structure.
 	 */
 	iopad = iohpAttach(lpo->iopad);
 	if (rc == PKT_OK && lpo->byteCount > 0) {
 		/* keep input buffer, create new one for IO */
-		buff              = lpo->recv_buf;
-		lpo->recv_buf     = get_free_recv_buffer_alloc(FALSE);
-		if (lpo->recv_buf) {
-			buff->recv_time   = lpo->aux.RecvTime;
-			buff->recv_length = (int)lpo->byteCount;
+		rbuf		= lpo->recv_buf;
+		lpo->recv_buf	= get_free_recv_buffer_alloc(FALSE);
+		if (NULL == lpo->recv_buf) {
+			lpo->recv_buf = rbuf;
+			rbuf = NULL;
 		} else {
-			lpo->recv_buf = buff;
-			buff = NULL;
-			++packets_dropped; /* maybe atomic? */
-		}
+			rbuf->recv_time   = lpo->aux.RecvTime;
+			rbuf->recv_length = (int)lpo->byteCount;
+			if (MSG_TRUNC & rbuf->wsamsg.dwFlags) {
+				msyslog(LOG_ERR, "%s packet truncated (%d bytes)",
+					stoa(&rbuf->recv_srcadr), rbuf->recv_length);
+				InterlockedIncrement(&packets_dropped);
+				freerecvbuf(rbuf);
+				IoCtxStartChecked(lpo, &QueueSocketRecv);
+				iohpDetach(iopad);
+				return;
+			}
+			/* Look for a NDIS receive timestamp (SO_TIMESTAMP) */
+			if (MSG_CTRUNC & rbuf->wsamsg.dwFlags) {
+				msyslog(LOG_ERR, "%s: OOB timestamp truncated",
+					stoa(&rbuf->recv_srcadr));
+			}
+			else for (cm = WSA_CMSG_FIRSTHDR(&rbuf->wsamsg);
+				  cm != NULL;
+				  cm = WSA_CMSG_NXTHDR(&rbuf->wsamsg, cm)) {
 
-	} /* Note: else we use the current buffer again */
+				if (   SOL_SOCKET == cm->cmsg_level
+				    && SO_TIMESTAMP == cm->cmsg_type) {
+					recv_ctr = *(u_int64 *)WSA_CMSG_DATA(cm);
+					if (0 != recv_ctr) {
+						QueryPerformanceCounter(&now_ctr.li);
+						get_systime(&lfp_now);
+						ctr_delta = now_ctr.ull - recv_ctr;
+						secs_delta = (double)ctr_delta / PerfCtrFreq;
+						DPRINTF(4, ("SO_TIMESTAMP correction: %.9f sec %s\n",
+							secs_delta, stoa(&ep->sin)));
+						ep->kern_ts_fail = 0;
+						if (255 > ep->kern_ts_seen) {
+							ep->kern_ts_seen++;
+							ep->kern_ts_once = true;
+						}
+						++ts_count;
+						total_ctr_delta += ctr_delta;
+						fuzz = ntp_uurandom() * sys_fuzz;
+						combined = fuzz - secs_delta;
+						DTOLFP(combined, &lfp_combined);
+						L_ADD(&lfp_now, &lfp_combined);
+						rbuf->recv_time = lfp_now;
+						NLOG(NLOG_SYSINFO) {
+							/*
+							 * Report occasionally on average difference between
+							 * ntpd user-mode timestamps and SO_TIMESTAMP.
+							 */
+							if (0 == d_stats_reset_time) {
+								d_stats_reset_time = current_time;
+							} else if (current_time > d_stats_reset_time + stats_dur) {
+								total_delta = (double)total_ctr_delta / PerfCtrFreq;
+								msyslog(LOG_INFO,
+									"%u hour avg UDP receive timestamp correction %.3f usec",
+									stats_dur / SECSPERHR, (total_delta / ts_count) * 1e6);
+								total_ctr_delta = 0;
+								ts_count = 0;
+								d_stats_reset_time = current_time;
+								if (stats_dur < SECSPERDAY) {
+									stats_dur *= 2;
+								}
+							}
+						}
+					} else {
+						/*
+						 * We found a SO_TIMESTAMP OOB record with a zero ts.
+						 * This is expected for loopback traffic, including
+						 * traffic between two local addresses which happens
+						 * with IPv6 manycasting.  The traffic will be
+						 * ignored by receive().  To avoid false-positive
+						 * warnings about nonworking timestamps, which
+						 * will routinely happen if the registry settings
+						 * haven't been made using --enable-udp-timestamps,
+						 * suppress the warning if the 'remote' address is
+						 * in fact another of ours.
+						 */
+						/* no NDIS receive timestamps on loopback */
+						if (INT_LOOPBACK & ep->flags) {
+							suppress_warning = true;
+						} else {
+							suppress_warning = false;
+							for (rep = ep_list; rep != NULL; rep = rep->elink) {
+								if (SOCK_EQ(&rbuf->recv_srcadr,
+									    &rep->sin)) {
+									suppress_warning = true;
+									break;
+								}
+							}
+						}
+						if (!suppress_warning) {
+							if (ep->kern_ts_fail < 255) {
+								ep->kern_ts_fail++;
+							}
+							if (ep->kern_ts_seen > 0) {
+								msyslog(LOG_WARNING,
+									"%s %s->%s kernel ts absent after %u ts",
+									ep->name, stoa(&rbuf->recv_srcadr),
+									stoa(&ep->sin), ep->kern_ts_seen);
+							} else if (3 == ep->kern_ts_fail) {
+								msyslog(LOG_INFO,
+									"%s %s kernel-mode receive timestamps not working.%s",
+									ep->name, stoa(&ep->sin),
+									(!ep->kern_ts_once)
+									   ? "  Invoking \"ntpd --enable-udp-timestamps\" as an Administrator might help."
+									   : ""
+									);
+							}
+						}
+						ep->kern_ts_seen = 0;
+					}
+					/* no need to look for other OOB data */
+					break;
+				}
+			}
+		}
+	} /* else reuse the current buffer */
 
 	if (rc != PKT_SOCKET_ERROR) {
-		IoCtxStartChecked(lpo, QueueSocketRecv, lpo->recv_buf);
-	}  else {
+		IoCtxStartChecked(lpo, &QueueSocketRecv);
+	} else {
 		freerecvbuf(lpo->recv_buf);
 		IoCtxFree(lpo);
+		InterlockedIncrement(&packets_dropped);
 	}
 	/* below this, any usage of 'lpo' is invalid! */
 
@@ -1644,14 +1806,13 @@ OnSocketRecv(
 	 * then feed it to the input queue. And we can be sure we have
 	 * a packet here, so we can update the stats.
 	 */
-	if (buff) {
-		INSIST(buff->recv_srcadr_len <= sizeof(buff->recv_srcadr));
+	if (rbuf != NULL) {
 		DPRINTF(4, ("%sfd %d %s recv packet mode is %d\n",
-			(MODE_BROADCAST == get_packet_mode(buff))
-			? " **** Broadcast "
-			: "",
-			(int)buff->fd, stoa(&buff->recv_srcadr),
-			get_packet_mode(buff)));
+			(MODE_BROADCAST == PKT_MODE(rbuf->recv_pkt.li_vn_mode))
+				? " **** Broadcast "
+				: "",
+			(int)rbuf->fd, stoa(&rbuf->recv_srcadr),
+			PKT_MODE(rbuf->recv_pkt.li_vn_mode)));
 
 		if (iohpEndPointOK(iopad)) {
 			InterlockedIncrement(&ep->received);
@@ -1659,13 +1820,15 @@ OnSocketRecv(
 			InterlockedIncrement(&handler_pkts);
 		}
 
-		DPRINTF(2, ("Received %d bytes fd %d in buffer %p from %s, state = %s\n",
-			buff->recv_length, (int)buff->fd, buff,
-			stoa(&buff->recv_srcadr), st_packet_handling[rc]));
-		iohpQueueLocked(iopad, iohpEndPointOK, buff);
+		DPRINTF(2, ("Received %d bytes fd %d in buff %p from %s,"
+			    " state = %s\n", rbuf->recv_length, (int)rbuf->fd,
+			    rbuf, stoa(&rbuf->recv_srcadr),
+			    st_packet_handling[rc]));
+		iohpQueueLocked(iopad, &iohpEndPointOK, rbuf);
 	}
 	iohpDetach(iopad);
 }
+
 
 /* ----------------------------------------------------------------- */
 static void
@@ -1736,16 +1899,15 @@ io_completion_port_remove_interface(
 	endpt *	ep
 	)
 {
-	/* Removing an endpoint is simple, too: Lock the shared lock
-	 * for write access, then invalidate the handles and the
-	 * endpoint pointer. Do an additional detach and leave the
-	 * write lock.
+	/*
+	 * Hand off to the IO completion thread synchronously
 	 */
 	IoHndPad_T *	iopad = (IoHndPad_T*)ep->ioreg_ctx;
 
-	INSIST(hndIOCPLPort && hMainRpcDone);
-	if (iopad)
-		iocpl_notify(iopad, OnInterfaceDetach, (UINT_PTR)-1);
+	DEBUG_INSIST(hndIOCPLPort && hMainRpcDone);
+	if (iopad) {
+		iocpl_notify(iopad, &OnInterfaceDetach, (UINT_PTR)-1);
+	}
 }
 
 /* --------------------------------------------------------------------
@@ -1770,6 +1932,7 @@ OnSocketDetach(
 	SetEvent(lpo->ppswake);
 }
 
+
 /* Add a socket handle to the I/O completion port, and send
  * NTP_RECVS_PER_SOCKET receive requests to the kernel.
  */
@@ -1786,27 +1949,40 @@ io_completion_port_add_socket(
 	static const char * const msgh =
 		"Can't add socket to i/o completion port";
 
-	IoCtx_t *	lpo;
-	size_t		n;
-	ULONG_PTR	key;
-	IoHndPad_T *	iopad = NULL;
-	recvbuf_t *	rbuf;
+	IoCtx_t *		lpo;
+	size_t			n;
+	ULONG_PTR		key;
+	IoHndPad_T *		iopad;
+	recvbuf_t *		rbuf;
+	TIMESTAMPING_CONFIG	ts_config = { 0 };
+	DWORD			cb = 0;
 
-	key = ((ULONG_PTR)ep & ~(ULONG_PTR)1u) + !!bcast;
+	key = ((ULONG_PTR)ep & ~1) + !!bcast;
 
 	if (NULL == (iopad = (IoHndPad_T*)ep->ioreg_ctx)) {
-		msyslog(LOG_CRIT, "io_completion_port_add_socket: endpt = %p not registered, exiting",
-			ep);
-		exit(1);
-	} else {
-		endpt *	rep = iopad->rsrc.ept;
-		iopad->handles[!!bcast] = (HANDLE)sfd;
-		INSIST(rep == ep);
+		msyslog(LOG_CRIT, "endpt %s not registered, exiting",
+			stoa(bcast ? &ep->bcast : &ep->sin));
+		exit(EX_SOFTWARE);
 	}
+	iopad->handles[!!bcast] = (HANDLE)sfd;
+	DEBUG_INSIST(iopad->rsrc.ept == ep);
 
-	if (NULL == CreateIoCompletionPort((HANDLE)sfd,
-		hndIOCPLPort, key, 0))
-	{
+	/*
+	 * SO_TIMESTAMP
+	 * On Windows Server 2022 21H2 and Windows 11 kernel-mode UDP receive
+	 * timestamps are finally available!  It is expected the
+	 * SIO_TIMESTAMPING ioctl will fail on earlier Windows versions.
+	 * If we want to warn about that failure, we'd need to check the OS
+	 * build number using RtlGetVersion() or RtlGetNtVersionNumbers() for
+	 * major version == 10 (Win11 reports 10) and build number >= 20348,
+	 * or a greater major version, according to
+	 * https://learn.microsoft.com/en-us/windows/win32/api/mstcpip/ns-mstcpip-timestamping_config
+	 */
+	ts_config.Flags |= TIMESTAMPING_FLAG_RX;
+	WSAIoctl(sfd, SIO_TIMESTAMPING, &ts_config, sizeof(ts_config), NULL,
+		 0, &cb, NULL, NULL);
+
+	if (NULL == CreateIoCompletionPort((HANDLE)sfd, hndIOCPLPort, key, 0)) {
 		msyslog(LOG_ERR, "%s: %m", msgh);
 		goto fail;
 	}
@@ -1820,8 +1996,9 @@ io_completion_port_add_socket(
 			msyslog(LOG_ERR, "%s: no receive buffer: %m", msgh);
 			goto fail;
 		}
-		if (!QueueSocketRecv(lpo, rbuf))
+		if (!QueueSocketRecv(lpo, rbuf)) {
 			goto fail;
+		}
 	}
 	return TRUE;
 
@@ -1829,6 +2006,8 @@ fail:
 	ep->ioreg_ctx = iohpDetach(ep->ioreg_ctx);
 	return FALSE;
 }
+
+
 /* ----------------------------------------------------------------- */
 void
 io_completion_port_remove_socket(
@@ -1836,14 +2015,15 @@ io_completion_port_remove_socket(
 	endpt *	ep
 	)
 {
-	/* Lock the shared lock for write, then search the given
+	/* Hand off to IO completion thread to search the given
 	 * socket handle and replace it with an invalid handle value.
 	 */
 	IoHndPad_T *	iopad = (IoHndPad_T*)ep->ioreg_ctx;
 
-	INSIST(hndIOCPLPort && hMainRpcDone);
-	if (iopad)
-		iocpl_notify(iopad, OnSocketDetach, fd);
+	DEBUG_INSIST(hndIOCPLPort && hMainRpcDone);
+	if (iopad) {
+		iocpl_notify(iopad, &OnSocketDetach, fd);
+	}
 }
 
 
@@ -1857,60 +2037,78 @@ io_completion_port_remove_socket(
  * Returns len after successful send.
  * Returns -1 for any error, with the error code available via
  *	msyslog() %m, or GetLastError().
+ *
+ * In contrast to most code in this module, this function is called
+ * on the main thread.
  */
 int
 io_completion_port_sendto(
 	endpt *		ep,
-	SOCKET		sfd,
 	void  *		pkt,
-	size_t		len,
+	DWORD		len,
 	sockaddr_u *	dest
 	)
 {
-	static const char * const msgh =
-		"sendto: cannot schedule socket send";
 	static const char * const dmsg =
 		"overlapped IO data buffer";
 
 	IoCtx_t *	lpo  = NULL;
-	void *		dbuf = NULL;
+	void *		dbuf;
 	WSABUF		wsabuf;
 	int		rc;
+	DWORD		err;
 
-	if (len > INT_MAX)
-		len = INT_MAX;
-
-	if (NULL == (dbuf = IOCPLPoolMemDup(pkt, len, dmsg)))
+	err = ERROR_NOT_ENOUGH_MEMORY;
+	if (NULL == (dbuf = IOCPLPoolMemDup(pkt, len, dmsg))) {
 		goto fail;
+	}
 	/* We register the IO operation against the shared lock here.
 	 * This is not strictly necessary, since the callback does not
 	 * access the endpoint structure in any way...
 	 */
-	if (NULL == (lpo = IoCtxAlloc(ep->ioreg_ctx, NULL)))
+	if (NULL == (lpo = IoCtxAlloc(ep->ioreg_ctx, NULL))) {
 		goto fail;
-
-	lpo->onIoDone  = OnSocketSend;
+	}
+	lpo->onIoDone  = &OnSocketSend;
 	lpo->trans_buf = dbuf;
-	lpo->flRawMem  = 1;
-	lpo->io.sfd    = sfd;
+	lpo->flRawMem  = TRUE;
+	lpo->io.sfd    = ep->fd;
 
-	wsabuf.buf = (void*)lpo->trans_buf;
-	wsabuf.len = (DWORD)len;
+	wsabuf.buf = lpo->trans_buf;
+	wsabuf.len = len;
 
-	rc  = WSASendTo(sfd, &wsabuf, 1, NULL, 0,
-			&dest->sa, SOCKLEN(dest),
-			&lpo->ol, NULL);
-	if (!rc || IoResultCheck((DWORD)WSAGetLastError(), lpo, msgh))
-		return (int)len;	/* normal/success return */
+	rc = WSASendTo(ep->fd, &wsabuf, 1, NULL, 0, &dest->sa, SOCKLEN(dest),
+		       &lpo->ol, NULL);
+	if (0 == rc) {
+		/*
+		 * Unlike other Windows I/O, we don't see ERROR_IO_PENDING
+		 * here, yet it is.  OnSocketSend() will clean up.
+		 */
+		return (int)len;
+	}
+	err = GetLastError();
+	if (ERROR_IO_PENDING == err) {
+		static bool once;
 
-	errno = EBADF;
-	return -1;
-
+		if (!once) {
+			once = true;
+			msyslog(LOG_INFO,
+				"Unexpected pending from WSASendTo %s -> %s",
+				stoa(&ep->sin), stoa(dest));
+		}
+		return (int)len;
+	}
+	msyslog(LOG_ERR, "send %s -> %s failed: %m", stoa(&ep->sin),
+		stoa(dest));
+	/* fallthru */
 fail:
-	IoCtxFree(lpo);
 	IOCPLPoolFree(dbuf, dmsg);
+	IoCtxFree(lpo);
+	SetLastError(err);
+
 	return -1;
 }
+
 
 /* --------------------------------------------------------------------
  * GetReceivedBuffers
@@ -1969,6 +2167,3 @@ GetReceivedBuffers(void)
 	return (full_recvbuffs());	/* get received buffers */
 }
 
-#else /*defined(HAVE_IO_COMPLETION_PORT) */
-  static int NonEmptyCompilationUnit;
-#endif  /*!defined(HAVE_IO_COMPLETION_PORT) */

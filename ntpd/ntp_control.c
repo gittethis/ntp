@@ -58,11 +58,11 @@ static	u_short ctlclkstatus	(struct refclockstat *);
 static	void	ctl_flushpkt	(u_char);
 static	void	ctl_putdata	(const char *, unsigned int, int);
 static	void	ctl_putstr	(const char *, const char *, size_t);
-static	void	ctl_putdblf	(const char *, int, int, double);
-#define	ctl_putdbl(tag, d)	ctl_putdblf(tag, 1, 3, d)
-#define	ctl_putdbl6(tag, d)	ctl_putdblf(tag, 1, 6, d)
-#define	ctl_putsfp(tag, sfp)	ctl_putdblf(tag, 0, -1, \
-					    FPTOD(sfp))
+static	void	ctl_putdblf	(const char *tag, int/*BOOL*/ use_f,
+				 int precision, double d);
+#define	ctl_putdbl(tag, d)	ctl_putdblf(tag, TRUE, 3, d)
+#define	ctl_putdbl6(tag, d)	ctl_putdblf(tag, TRUE, 6, d)
+#define	ctl_putsfp(tag, sfp)	ctl_putdblf(tag, FALSE, -1, FPTOD(sfp))
 static	void	ctl_putuint	(const char *, u_long);
 static	void	ctl_puthex	(const char *, u_long);
 static	void	ctl_putint	(const char *, long);
@@ -144,8 +144,8 @@ static const struct ctl_proc control_codes[] = {
 #define	CS_PEERID		9
 #define	CS_OFFSET		10
 #define	CS_DRIFT		11
-#define	CS_JITTER		12
-#define	CS_ERROR		13
+#define	CS_JITTER		12			/* sys_jitter */
+#define	CS_ERROR		13			/* clk_jitter */
 #define	CS_CLOCK		14
 #define	CS_PROCESSOR		15
 #define	CS_SYSTEM		16
@@ -911,19 +911,19 @@ is_safe_filename(const char * name)
 		0xFFFFFFFC, 0xC03FFFFF,
 		0xFFFFFFFC, 0x003FFFFF
 	};
-
 	u_int widx, bidx, mask;
-	if ( ! (name && *name))
-		return FALSE;
 
+	if (NULL == name || '\0' == name[0]) {
+		return FALSE;
+	}
 	mask = 1u;
 	while (0 != (widx = (u_char)*name++)) {
-		bidx = (widx & 15) << 1;
+		bidx = (0xf & widx) << 1;
 		widx = widx >> 4;
-		if (widx >= sizeof(chclass)/sizeof(chclass[0]))
+		if (   widx >= COUNTOF(chclass)
+		    || !((chclass[widx] >> bidx) & mask)) {
 			return FALSE;
-		if (0 == ((chclass[widx] >> bidx) & mask))
-			return FALSE;
+		}
 		mask = 2u;
 	}
 	return TRUE;
@@ -956,18 +956,18 @@ save_config(
 	 * reject both types of slashes on all platforms.
 	 */
 	/* TALOS-CAN-0062: block directory traversal for VMS, too */
-	static const char * illegal_in_filename =
-#if defined(VMS)
-	    ":[]"	/* do not allow drive and path components here */
-#elif defined(SYS_WINNT)
-	    ":\\/"	/* path and drive separators */
-#else
-	    "\\/"	/* separator and critical char for POSIX */
-#endif
-	    ;
 	char reply[128];
 #ifdef SAVECONFIG
 	static const char savedconfig_eq[] = "savedconfig=";
+	static const char* illegal_in_filename =
+#if defined(VMS)
+		":[]"	/* do not allow drive and path components here */
+#elif defined(SYS_WINNT)
+		":\\/"	/* path and drive separators */
+#else
+		"\\/"	/* separator and critical char for POSIX */
+#endif
+		;
 
 	/* Build a safe open mode from the available mode flags. We want
 	 * to create a new file and write it in text mode (when
@@ -976,10 +976,8 @@ save_config(
 	static const int openmode = O_CREAT | O_TRUNC | O_WRONLY
 #  if defined(O_EXCL)		/* posix, vms */
 	    | O_EXCL
-#  elif defined(_O_EXCL)	/* windows is alway very special... */
-	    | _O_EXCL
 #  endif
-#  if defined(_O_TEXT)		/* windows, again */
+#  if defined(_O_TEXT)	/* translate LF to CRLF on Windows */
 	    | _O_TEXT
 #endif
 	    ;
@@ -1061,7 +1059,7 @@ save_config(
 	{
 		/*
 		 * If we arrive here, 'strftime()' balked; most likely
-		 * the buffer was too short. (Or it encounterd an empty
+		 * the buffer was too short. (Or it encountered an empty
 		 * format, or just a format that expands to an empty
 		 * string.) We try to use the original name, though this
 		 * is very likely to fail later if there are format
@@ -1657,7 +1655,7 @@ ctl_putunqstr(
 static void
 ctl_putdblf(
 	const char *	tag,
-	int		use_f,
+	int/*BOOL*/	use_f,
 	int		precision,
 	double		d
 	)
@@ -1827,19 +1825,21 @@ ctl_putrefid(
 	)
 {
 	size_t nc;
-
 	union {
-		uint32_t w;
-		uint8_t  b[sizeof(uint32_t)];
+		u_int32	w;
+		char	ch[sizeof(refid)];
 	} bytes;
 
 	bytes.w = refid;
-	for (nc = 0; nc < sizeof(bytes.b) && bytes.b[nc]; ++nc)
-		if (  !isprint(bytes.b[nc])
-		    || isspace(bytes.b[nc])
-		    || bytes.b[nc] == ','  )
-			bytes.b[nc] = '.';
-	ctl_putunqstr(tag, (const char*)bytes.b, nc);
+	for (nc = 0; nc < sizeof(bytes.ch) && bytes.ch[nc]; ++nc) {
+		if (  !isprint(bytes.ch[nc])
+		    || isspace(bytes.ch[nc])
+		    || ',' == bytes.ch[nc]) {
+
+			bytes.ch[nc] = '.';
+		}
+	}
+	ctl_putunqstr(tag, bytes.ch, nc);
 }
 
 
@@ -1861,10 +1861,11 @@ ctl_putarray(
 	ep = buffer + sizeof(buffer);
 	i  = start;
 	do {
-		if (i == 0)
+		if (i == 0) {
 			i = NTP_SHIFT;
+		}
 		i--;
-		rc = snprintf(cp, (size_t)(ep - cp), " %.2f", arr[i] * 1e3);
+		rc = snprintf(cp, (size_t)(ep - cp), " %.3f", arr[i] * 1e3);
 		INSIST(rc >= 0 && (size_t)rc < (size_t)(ep - cp));
 		cp += rc;
 	} while (i != start);
@@ -1999,12 +2000,12 @@ ctl_putsys(
 		ctl_putdbl(sys_var[CS_DRIFT].text, drift_comp * 1e6);
 		break;
 
-	case CS_JITTER:
+	case CS_JITTER:					/* sys_jitter */
 		ctl_putdbl6(sys_var[CS_JITTER].text, sys_jitter * 1e3);
 		break;
 
-	case CS_ERROR:
-		ctl_putdbl(sys_var[CS_ERROR].text, clock_jitter * 1e3);
+	case CS_ERROR:					/* clk_jitter */
+		ctl_putdbl6(sys_var[CS_ERROR].text, clock_jitter * 1e3);
 		break;
 
 	case CS_CLOCK:
@@ -3747,10 +3748,11 @@ send_random_tag_value(
 	int	indx
 	)
 {
-	int	noise;
+	u_long	noise;
 	char	buf[32];
 
-	noise = rand() ^ (rand() << 16);
+	/* ancient MS C versions provided only 16 bits from rand() */
+	noise = (u_long)(rand() ^ (rand() << 16));
 	buf[0] = 'a' + noise % 26;
 	noise >>= 5;
 	buf[1] = 'a' + noise % 26;
@@ -3759,7 +3761,7 @@ send_random_tag_value(
 	noise >>= 5;
 	buf[3] = '.';
 	snprintf(&buf[4], sizeof(buf) - 4, "%d", indx);
-	ctl_putuint(buf, noise);
+	ctl_putuint(buf, 0xffff & noise);
 }
 
 
@@ -4365,28 +4367,28 @@ read_ifstats(
 	ctl_flushpkt(0);
 }
 
+
 static void
 sockaddrs_from_restrict_u(
 	sockaddr_u *	psaA,
 	sockaddr_u *	psaM,
 	restrict_u *	pres,
-	int		ipv6
+	int/*BOOL*/	is_ipv6
 	)
 {
 	ZERO(*psaA);
 	ZERO(*psaM);
-	if (!ipv6) {
-		psaA->sa.sa_family = AF_INET;
-		psaA->sa4.sin_addr.s_addr = htonl(pres->u.v4.addr);
-		psaM->sa.sa_family = AF_INET;
-		psaM->sa4.sin_addr.s_addr = htonl(pres->u.v4.mask);
+	if (!is_ipv6) {
+		AF(psaA) = AF_INET;
+		SET_ADDR4(psaA, pres->u.v4.addr);
+		AF(psaM) = AF_INET;
+		SET_ADDR4(psaM, pres->u.v4.mask);
 	} else {
-		psaA->sa.sa_family = AF_INET6;
-		memcpy(&psaA->sa6.sin6_addr, &pres->u.v6.addr,
-		       sizeof(psaA->sa6.sin6_addr));
-		psaM->sa.sa_family = AF_INET6;
-		memcpy(&psaM->sa6.sin6_addr, &pres->u.v6.mask,
-		       sizeof(psaA->sa6.sin6_addr));
+		AF(psaA) = AF_INET6;
+		SET_ADDR6N(psaA, pres->u.v6.addr);
+		SET_SCOPE(psaA, pres->u.v6.scope);
+		AF(psaM) = AF_INET6;
+		SET_ADDR6N(psaM, pres->u.v6.mask);
 	}
 }
 

@@ -447,13 +447,27 @@ flag = {
 
 flag = {
     ifdef     = SYS_WINNT;
+    name      = enable-udp-timestamps;
+    descrip   = "Configure receive timestamps of UDP packets (run as Admin)";
+    doc = <<-  _EndOfDoc_
+	Configure each network adapter to capture a timestamp for each UDP
+	packet received in the kernel.  This option modifies registry settings
+	that require Administrator access.  The adapters or Windows must be
+	restarted for the changes to take effect.  The registry values are
+	type @code{REG_DWORD} named @code{SoftwareTimestampSettings}.
+	_EndOfDoc_;
+};
+
+flag = {
+    ifdef     = SYS_WINNT;
     name      = usepcc;
-    descrip   = "Use CPU cycle counter (Windows only)";
+    descrip   = "Use CPU cycle counter (up to Windows 7)";
     doc = <<-  _EndOfDoc_
 	Attempt to substitute the CPU counter for @code{QueryPerformanceCounter}.
 	The CPU counter and @code{QueryPerformanceCounter} are compared, and if
 	they have the same frequency, the CPU counter (RDTSC on x86) is
-	used directly, saving the overhead of a system call.
+	used directly, saving the overhead of a system call.  This option has no
+	effect on Windows 8 and later.
 	_EndOfDoc_;
 };
 
@@ -461,11 +475,12 @@ flag = {
     ifdef     = SYS_WINNT;
     name      = pccfreq;
     arg-type  = string;
-    descrip   = "Force CPU cycle counter use (Windows only)";
+    descrip   = "Force CPU cycle counter use (up to Windows 7)";
     doc = <<-  _EndOfDoc_
-	Force substitution the CPU counter for @code{QueryPerformanceCounter}.
+	Force substituting the CPU counter for @code{QueryPerformanceCounter}.
 	The CPU counter (RDTSC on x86) is used unconditionally with the
-	given frequency (in Hz).
+	given frequency (in Hz).  This option has no effect on Windows 8 and
+	later.
 	_EndOfDoc_;
 };
 

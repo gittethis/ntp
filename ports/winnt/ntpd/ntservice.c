@@ -29,11 +29,15 @@
 #include "ntp_iocompletionport.h"
 #include "ntpd-opts.h"
 #include "isc/win32os.h"
-#include <ssl_applink.c>
+
+#define  USING_DEBUG_HEAP_FLAGS
+int	 debug_heap_flags;
+#include "ssl_applink.c"
 
 /*
  * Globals
  */
+
 static SERVICE_STATUS_HANDLE hServiceStatus;
 static BOOL foreground = FALSE;
 static BOOL computer_shutting_down = FALSE;
@@ -49,13 +53,6 @@ extern void uninit_io_completion_port();
 extern int ntpdmain(int argc, char *argv[]);
 extern void WINAPI ServiceControl(DWORD dwCtrlCode);
 extern void ntservice_exit(void);
-
-#ifdef WRAP_DBG_MALLOC
-void *wrap_dbg_malloc(size_t s, const char *f, int l);
-void *wrap_dbg_realloc(void *p, size_t s, const char *f, int l);
-void wrap_dbg_free(void *p);
-void wrap_dbg_free_ex(void *p, const char *f, int l);
-#endif
 
 void WINAPI
 service_main(
@@ -105,18 +102,19 @@ int main(
 	argv_after_opts = argv;
 	parse_cmdline_opts(&argc_after_opts, &argv_after_opts);
 
-	if (HAVE_OPT(QUIT)
+	if (   HAVE_OPT(QUIT)
 	    || HAVE_OPT(SAVECONFIGQUIT)
 	    || HAVE_OPT(HELP)
 #ifdef DEBUG
 	    || OPT_VALUE_SET_DEBUG_LEVEL != 0
 #endif
-	    || HAVE_OPT(NOFORK))
+	    || HAVE_OPT(NOFORK)
+	    || HAVE_OPT(ENABLE_UDP_TIMESTAMPS)) {
 		foreground = TRUE;
-
-	if (foreground)			/* run in console window */
+	}
+	if (foreground) {			/* run in console window */
 		rc = ntpdmain(argc, argv);
-	else {
+	} else {
 		/* Start up as service */
 
 		SERVICE_TABLE_ENTRY dispatchTable[] = {
@@ -132,8 +130,11 @@ int main(
 			fprintf(stderr,
 				"%s: unable to start as service:\n"
 				"%s\n"
-				"Use -d, -q, -n, -?, --help or "
-				"--saveconfigquit to run "
+				"Use "
+#ifdef DEBUG
+				"-d, -D, "
+#endif
+				"-n, -q, -?, or --help to run "
 				"interactive.\n",
 				argv[0], ntp_strerror(rc));
 		}
@@ -173,25 +174,31 @@ ntservice_init(void)
 	}
 
 #ifdef _CRTDBG_MAP_ALLOC
-		/* ask the runtime to dump memory leaks at exit */
-		_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF
-			       | _CRTDBG_LEAK_CHECK_DF		/* report on leaks at exit */
-			       | _CRTDBG_CHECK_ALWAYS_DF	/* Check heap every alloc/dealloc */
-#ifdef MALLOC_LINT
-			       | _CRTDBG_DELAY_FREE_MEM_DF	/* Don't actually free memory */
-#endif
-			       );
-#ifdef DOES_NOT_WORK
-			/*
-			 * hart: I haven't seen this work, running ntpd.exe -n from a shell
-			 * to both a file and the debugger output window.  Docs indicate it
-			 * should cause leak report to go to stderr, but it's only seen if
-			 * ntpd runs under a debugger (in the debugger's output), even with
-			 * this block of code enabled.
-			 */
-			_CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
-			_CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
-#endif
+	/* configure Microsoft debug heap */
+	if (debug >= 3) {
+		/* check heap every 16 alloc/frees */
+		debug_heap_flags |= _CRTDBG_CHECK_EVERY_16_DF;
+		if (debug >= 4) {
+			/* report on leaks at exit */
+			debug_heap_flags |= _CRTDBG_LEAK_CHECK_DF;
+			if (debug >= 5) {
+				/* keep freed blocks, detect write after free */
+				debug_heap_flags |= _CRTDBG_DELAY_FREE_MEM_DF;
+			}
+		}
+	}
+	/*
+	 * _CRTDBG_ALLOC_MEM_DF turns on debug heap use.  ssl_applink.c
+	 * wrappers used by OpenSSL turn it off around their allocations so
+	 * for convenience we leave it out of debug_heap_flags.
+	 */
+	_CrtSetDbgFlag(debug_heap_flags | _CRTDBG_ALLOC_MEM_DF);
+	_CrtSetReportFile(_CRT_WARN,  _CRTDBG_FILE_STDERR);
+	_CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+	_CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+	_CrtSetReportMode(_CRT_WARN,   _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
+	_CrtSetReportMode(_CRT_ERROR,  _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
+	_CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
 #endif /* using MS debug C runtime heap, _CRTDBG_MAP_ALLOC */
 
 	atexit( ntservice_exit );
@@ -333,25 +340,24 @@ OnConsoleEvent(
 		case CTRL_BREAK_EVENT:
 			if (debug > 0) {
 				debug <<= 1;
-			}
-			else {
+				if (debug > 8) {
+					debug = 0;
+				}
+			} else {
 				debug = 1;
-			}
-			if (debug > 8) {
-				debug = 0;
 			}
 			msyslog(LOG_DEBUG, "debug level %d", debug);
 			break;
 #else
 		case CTRL_BREAK_EVENT:
-			break;
+			/* pass to next handler */
+			return FALSE;
 #endif
 
 		case CTRL_C_EVENT:
 		case CTRL_CLOSE_EVENT:
 		case CTRL_SHUTDOWN_EVENT:
 			SetEvent(WaitableExitEventHandle);
-			Sleep(100);  //##++
 			break;
 
 		default :
@@ -362,4 +368,3 @@ OnConsoleEvent(
 	/* we've handled it, no more handlers should be called */
 	return TRUE;
 }
-

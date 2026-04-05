@@ -140,7 +140,6 @@ static int calcomp(struct calendar *pjd1, struct calendar *pjd2)
 /*
  * Cryptodefines
  */
-#define TAI_1972	10	/* initial TAI offset (s) */
 #define MAX_LEAP	100	/* max UTC leapseconds (s) */
 #define VALUE_LEN	(6 * 4) /* min response field length */
 #define MAX_VALLEN	(65535 - VALUE_LEN)

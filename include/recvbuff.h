@@ -31,19 +31,60 @@
 # define RECV_CLOCK 0
 #endif
 
+ /*
+  * Packet timestamping support.  Prefer most accurate method available.
+  */
+#ifdef CMSG_FIRSTHDR
+# if defined(SO_TS_BINTIME) || defined(SO_TIMESTAMPNS) || defined(SO_TIMESTAMP)
+#  define HAVE_PACKET_TIMESTAMP
+
+#  if defined(SO_TS_BINTIME)	/* 64 bit FP fraction */
+#   define HAVE_TS_BINTIME
+#   define NTP_SO_TS		SO_TIMESTAMP
+#   define NTP_SO_TS_STRING	"SO_TIMESTAMP"
+#   define NTP_SCM_TS		SCM_BINTIME
+#   define NTP_SCM_TS_STRING	"SCM_BINTIME"
+#   define CMSG_TS_BUFSIZE	CMSG_SPACE(sizeof(struct bintime))
+#  elif defined(SO_TIMESTAMPNS)	/* SO_TIMESTAMPNS is second best */
+#   define HAVE_TIMESTAMPNS
+#   define NTP_SO_TS		SO_TIMESTAMPNS
+#   define NTP_SO_TS_STRING	"SO_TIMESTAMPNS"
+#   define NTP_SCM_TS		SCM_TIMESTAMPNS
+#   define NTP_SCM_TS_STRING	"SCM_TIMESTAMPNS"
+#   define CMSG_TS_BUFSIZE	CMSG_SPACE(sizeof(struct timespec))
+#  elif defined(SO_TIMESTAMP)	/* SO_TIMESTAMP is least loved */
+#   define HAVE_TIMESTAMP
+#   define NTP_SO_TS		SO_TIMESTAMP
+#   define NTP_SO_TS_STRING	"SO_TIMESTAMP"
+#   define NTP_SCM_TS		SCM_TIMESTAMP
+#   define NTP_SCM_TS_STRING	"SCM_TIMESTAMP"
+#   define CMSG_TS_BUFSIZE	CMSG_SPACE(sizeof(struct timeval))
+#  endif
+
+#  ifdef SCM_TIME_INFO		/* HW timestamp info (uncommon) */
+#   define CMSG_TI_BUFSIZE CMSG_SPACE(sizeof(struct sock_timestamp_info))
+#  else
+#   define CMSG_TI_BUFSIZE 0
+#  endif
+
+#  define CMSG_BUFSIZE	(32 + CMSG_TS_BUFSIZE + CMSG_TI_BUFSIZE)
+
+# endif		/* SO_TS_BINTIME || SO_TIMESTAMPNS || SO_TIMESTAMP */
+#endif		/* CMSG_FIRSTHDR */
+
 #if defined HAVE_IO_COMPLETION_PORT
 # include "ntp_iocompletionport.h"
 # include "ntp_timer.h"
 
-# define RECV_BLOCK_IO()	EnterCriticalSection(&RecvCritSection)
-# define RECV_UNBLOCK_IO()	LeaveCriticalSection(&RecvCritSection)
-
 /*  Return the event which is set when items are added to the full list
  */
 extern HANDLE	get_recv_buff_event(void);
+
+# define RECV_BLOCK_IO()	EnterCriticalSection(&RecvCritSection)
+# define RECV_UNBLOCK_IO()	LeaveCriticalSection(&RecvCritSection)
 #else
-# define RECV_BLOCK_IO()	
-# define RECV_UNBLOCK_IO()	
+# define RECV_BLOCK_IO()	do {} while (FALSE)
+# define RECV_UNBLOCK_IO()	do {} while (FALSE)
 #endif
 
 
@@ -64,33 +105,29 @@ extern HANDLE	get_recv_buff_event(void);
 typedef struct recvbuf recvbuf_t;
 
 struct recvbuf {
-	recvbuf_t *	link;	/* next in list */
+	recvbuf_t *	link;		/* must be first - gen_fifo */
+	endpt *		dstadr;		/* address pkt arrived on */
+	void		(*receiver)(struct recvbuf *); /* callback */
+	l_fp		recv_time;	/* time of arrival */
+	SOCKET		fd;		/* fd on which it was received */
+	int		used;		/* reference count */
+	int		recv_length;	/* number of octets received */
 	union {
 		sockaddr_u	X_recv_srcadr;
-		caddr_t		X_recv_srcclock;
-		struct peer *	X_recv_peer;
+		struct peer *	X_recv_peer;	/* refclock peer */
 	} X_from_where;
 #define recv_srcadr		X_from_where.X_recv_srcadr
-#define	recv_srcclock		X_from_where.X_recv_srcclock
 #define recv_peer		X_from_where.X_recv_peer
-#ifndef HAVE_IO_COMPLETION_PORT
-	sockaddr_u	srcadr;		/* where packet came from */
-#else
-	int		recv_srcadr_len;/* filled in on completion */
+#ifdef SYS_WINNT
+	WSAMSG		wsamsg;		/* WSARecvMsg() async */
+	char		cmsgbuf[CMSG_BUFSIZE];
 #endif
-	endpt *		dstadr;		/* address pkt arrived on */
-	SOCKET		fd;		/* fd on which it was received */
-	int		msg_flags;	/* Flags received about the packet */
-	l_fp		recv_time;	/* time of arrival */
-	void		(*receiver)(struct recvbuf *); /* callback */
-	int		recv_length;	/* number of octets received */
 	union {
 		struct pkt	X_recv_pkt;
 		u_char		X_recv_buffer[RX_BUFF_SIZE];
 	} recv_space;
 #define	recv_pkt		recv_space.X_recv_pkt
 #define	recv_buffer		recv_space.X_recv_buffer
-	int used;		/* reference count */
 };
 
 extern	void	init_recvbuff(int);

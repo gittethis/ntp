@@ -182,22 +182,16 @@ getShmTime(
 		sa.bInheritHandle = FALSE;
 		psec = &sa;
 	}
-	shmid = CreateFileMapping ((HANDLE)0xffffffff, psec, PAGE_READWRITE,
+	shmid = CreateFileMapping (INVALID_HANDLE_VALUE, psec, PAGE_READWRITE,
 				   0, sizeof (struct shmTime), buf);
 	if (shmid == NULL) { /*error*/
-		char buf[1000];		
-		FormatMessage (FORMAT_MESSAGE_FROM_SYSTEM,
-			       0, GetLastError (), 0, buf, sizeof (buf), 0);
-		msyslog(LOG_ERR, "SHM CreateFileMapping (unit %d): %s", unit, buf);
+		msyslog(LOG_ERR, "SHM CreateFileMapping (unit %d): %m", unit);
 		return NULL;
 	}
 	p = (struct shmTime *)MapViewOfFile(shmid, FILE_MAP_WRITE, 0, 0,
 					    sizeof (struct shmTime));
 	if (p == NULL) { /*error*/
-		char buf[1000];		
-		FormatMessage (FORMAT_MESSAGE_FROM_SYSTEM,
-			       0, GetLastError (), 0, buf, sizeof (buf), 0);
-		msyslog(LOG_ERR,"SHM MapViewOfFile (unit %d): %s", unit, buf);
+		msyslog(LOG_ERR,"SHM MapViewOfFile (unit %d): %m", unit);
 		return NULL;
 	}
 

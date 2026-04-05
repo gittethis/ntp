@@ -27,10 +27,9 @@
 #endif
 
 #ifdef WRAP_DBG_MALLOC
-static void *wrap_dbg_malloc(size_t s, const char *f, int l);
-static void *wrap_dbg_realloc(void *p, size_t s, const char *f, int l);
-static void wrap_dbg_free(void *p);
-static void wrap_dbg_free_ex(void *p, const char *f, int l);
+static void *	wrap_dbg_malloc_ex(size_t s, const char *f, int l);
+static void *	wrap_dbg_realloc_ex(void *p, size_t s, const char *f, int l);
+static void	wrap_dbg_free_ex(void *p, const char *f, int l);
 #endif
 
 
@@ -41,23 +40,15 @@ void ssl_applink(void);
 void
 ssl_applink(void)
 {
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-
-#   ifdef WRAP_DBG_MALLOC
-	CRYPTO_set_mem_functions(wrap_dbg_malloc, wrap_dbg_realloc, wrap_dbg_free_ex);
-#   else
-	OPENSSL_malloc_init();
-#   endif
-
+# ifdef WRAP_DBG_MALLOC
+#  if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	CRYPTO_set_mem_functions(&wrap_dbg_malloc_ex, &wrap_dbg_realloc_ex,
+				 &wrap_dbg_free_ex);
 #  else
-
-#   ifdef WRAP_DBG_MALLOC
-	CRYPTO_set_mem_ex_functions(wrap_dbg_malloc, wrap_dbg_realloc, wrap_dbg_free);
-#   else
-	CRYPTO_malloc_init();
-#   endif
-
-#endif /* OpenSSL version cascade */
+	CRYPTO_set_mem_ex_functions(&wrap_dbg_malloc_ex, &wrap_dbg_realloc_ex,
+				    &wrap_dbg_free_ex);
+#  endif
+# endif
 }
 #else	/* !OPENSSL || !SYS_WINNT */
 #define ssl_applink()	do {} while (0)
@@ -66,35 +57,48 @@ ssl_applink(void)
 
 #ifdef WRAP_DBG_MALLOC
 /*
- * OpenSSL malloc overriding uses different parameters
- * for DEBUG malloc/realloc/free (lacking block type).
- * Simple wrappers convert.
+ * Avoid showing OpenSSL memory allocations in MS debug heap leak reports
+ * by clearing _CRTDBG_ALLOC_MEM_DF before each crypto allocation and
+ * restoring it afterward.  That causes those allocations to be marked
+ * as _IGNORE_BLOCK type.
+ * 
  */
-static void *wrap_dbg_malloc(size_t s, const char *f, int l)
-{
-	void *ret;
+# ifdef USING_DEBUG_HEAP_FLAGS
+#  define IGNORE_CRYPTO_ALLOCS(ret, alloc_call)				\
+	do {								\
+		_CrtSetDbgFlag(debug_heap_flags);			\
+		ret = alloc_call;					\
+		_CrtSetDbgFlag(debug_heap_flags | _CRTDBG_ALLOC_MEM_DF);\
+	} while (0)
+# else
+#  define IGNORE_CRYPTO_ALLOCS(ret, alloc_call)				\
+	do {								\
+		ret = alloc_call;					\
+	} while (0)
+# endif
 
-	ret = _malloc_dbg(s, _NORMAL_BLOCK, f, l);
+static void* wrap_dbg_malloc_ex(size_t s, const char *f, int l)
+{
+	void *	ret;
+
+	IGNORE_CRYPTO_ALLOCS(ret, _malloc_dbg(s, _NORMAL_BLOCK, f, l));
 	return ret;
 }
 
-static void *wrap_dbg_realloc(void *p, size_t s, const char *f, int l)
+static void* wrap_dbg_realloc_ex(void* p, size_t s, const char *f, int l)
 {
-	void *ret;
+	void* ret;
 
-	ret = _realloc_dbg(p, s, _NORMAL_BLOCK, f, l);
+	IGNORE_CRYPTO_ALLOCS(ret, _realloc_dbg(p, s, _NORMAL_BLOCK, f, l));
 	return ret;
-}
-
-static void wrap_dbg_free(void *p)
-{
-	_free_dbg(p, _NORMAL_BLOCK);
 }
 
 static void wrap_dbg_free_ex(void *p, const char *f, int l)
 {
-	(void)f;
-	(void)l;
+	UNUSED_ARG(f);
+	UNUSED_ARG(l);
+
 	_free_dbg(p, _NORMAL_BLOCK);
 }
+
 #endif	/* WRAP_DBG_MALLOC */

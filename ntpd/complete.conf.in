@@ -48,8 +48,9 @@ multicastclient 224.0.1.1 ff05::101
 mru maxage 64 mindepth 600 initalloc 600 initmem 16 incalloc 99 incmem 4 maxdepth 1024 maxmem 4096
 discard minimum 1 average 3 monitor 3000
 pollskewlist 3 1|2 4 3|4 default 6|7
-restrict default
-restrict default ippeerlimit 0 nomodify limited kod nopeer noserve nomrulist
+restrict default kod limited
+restrict -4 default ippeerlimit 4 nomodify limited kod nopeer noserve nomrulist
+restrict -6 default ippeerlimit 6 nomodify limited kod nopeer noserve nomrulist
 restrict source ippeerlimit 1
 restrict source ippeerlimit 2 nomodify limited kod
 restrict trusted.host.name.example.com. nomodify
@@ -57,15 +58,18 @@ delrestrict trusted.host.name.example.com.
 restrict 192.0.2.66 epeer flake lowpriotrap mssntp noepeer noquery notrap notrust ntpport version
 delrestrict source 192.0.2.123
 delrestrict source [2001:db8::123]
-restrict fe80::1
 restrict 127.0.0.1
 restrict ::1
 restrict 198.51.100.123 serverresponse fuzz
-restrict fec0:: mask [ffff::] ignore
+restrict fe80::%123/16 ignore
+restrict fec0:8004:0101:/48 nomrulist kod limited notrap
+restrict 10.0.0.0/8 nomrulist kod limited notrap
+restrict fe80::1 mask beef
+restrict 203.0.113.0 mask 255.255.255.127
 interface drop ipv6
 interface ignore ipv4
 interface drop wildcard
-interface listen eth0
+nic listen eth0
 interface listen ipv6
 interface listen 203.0.113.0/24
 interface listen 192.0.2.123

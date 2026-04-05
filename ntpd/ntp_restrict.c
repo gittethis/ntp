@@ -28,15 +28,6 @@
  * has been expanded, however, to suit the needs of those with more
  * restrictive access policies.
  */
-#define MASK_IPV6_ADDR(dst, src, msk)					\
-	do {								\
-		int x;							\
-									\
-		for (x = 0; x < (int)COUNTOF((dst)->s6_addr); x++) {	\
-			(dst)->s6_addr[x] =   (src)->s6_addr[x]		\
-					    & (msk)->s6_addr[x];	\
-		}							\
-	} while (FALSE)
 
 /*
  * We allocate INC_RESLIST{4|6} entries to the free list whenever empty.
@@ -101,9 +92,8 @@ static	restrict_u *	alloc_res6(void);
 static	void		free_res(restrict_u *, int);
 static	inline void	inc_res_limited(void);
 static	inline void	dec_res_limited(void);
-static	restrict_u *	match_restrict4_addr(u_int32, u_short);
-static	restrict_u *	match_restrict6_addr(const struct in6_addr *,
-					     u_short);
+static	inline restrict_u *	match_restrict4_addr(const sockaddr_u *addr);
+static	inline restrict_u *	match_restrict6_addr(const sockaddr_u *addr);
 static	restrict_u *	match_restrict_entry(const restrict_u *, int);
 static inline int/*BOOL*/	mflags_sorts_before(u_short, u_short);
 static	int/*BOOL*/	res_sorts_before4(restrict_u *, restrict_u *);
@@ -123,27 +113,30 @@ static void		dump_restrict(restrict_u *, int);
 static void
 dump_restrict(
 	restrict_u *	res,
-	int		is_ipv6
-)
+	int/*BOOL*/	is_ipv6
+	)
 {
-	char as[INET6_ADDRSTRLEN];
-	char ms[INET6_ADDRSTRLEN];
+	sockaddr_u	addr;
+	sockaddr_u	mask;
 
+	ZERO(addr);
+	ZERO(mask);
 	if (is_ipv6) {
-		inet_ntop(AF_INET6, &res->u.v6.addr, as, sizeof as);
-		inet_ntop(AF_INET6, &res->u.v6.mask, ms, sizeof ms);
+		AF(&addr) = AF(&mask) = AF_INET6;
+		SOCK_ADDR6(&addr) = res->u.v6.addr;
+		SOCK_ADDR6(&mask) = res->u.v6.mask;
+		SCOPE_VAR(&addr) = res->u.v6.scope;
 	} else {
-		struct in_addr	sia, sim;
-
-		sia.s_addr = htonl(res->u.v4.addr);
-		sim.s_addr = htonl(res->u.v4.addr);
-		inet_ntop(AF_INET, &sia, as, sizeof as);
-		inet_ntop(AF_INET, &sim, ms, sizeof ms);
+		AF(&addr) = AF(&mask) = AF_INET;
+		SOCK_ADDR4(&addr).s_addr = res->u.v4.addr;
+		SOCK_ADDR4(&mask).s_addr = res->u.v4.mask;
 	}
-	printf("%s/%s: hits %u ippeerlimit %hd mflags %s rflags %s",
-		as, ms, res->count, res->ippeerlimit,
-		mflags_str(res->mflags),
-		rflags_str(res->rflags));
+	printf("%s: hits %u", smtoa(&addr, &mask), res->count);
+	if (-1 != res->ippeerlimit) {
+		printf(" ippeerlimit %hd", res->ippeerlimit);
+	}
+	printf(" mflags %s rflags %s", mflags_str(res->mflags),
+	       rflags_str(res->rflags));
 	if (res->expire > 0) {
 		printf(" expire %u\n", res->expire);
 	} else {
@@ -233,8 +226,8 @@ alloc_res4(void)
 {
 	const size_t	cb = V4_SIZEOF_RESTRICT_U;
 	const size_t	count = INC_RESLIST4;
-	restrict_u*	rl;
-	restrict_u*	res;
+	restrict_u *	rl;
+	restrict_u *	res;
 	size_t		i;
 
 	UNLINK_HEAD_SLIST(res, resfree4, link);
@@ -331,15 +324,56 @@ dec_res_limited(void)
 }
 
 
-static restrict_u *
+/* IPv4 address prefix from address and mask */
+static inline u_int32
+ipv4_prefix(
+	u_int32 src,
+	u_int32 msk
+	)
+{
+	return src & msk;
+}
+
+
+/* IPv6 address prefix from address and mask */
+static inline struct in6_addr
+ipv6_prefix(
+	struct in6_addr src,
+	struct in6_addr msk
+	)
+{
+	struct in6_addr	pfx;
+	u_int		x;
+
+#if defined(HAVE_STRUCT_IN6_ADDR_S6_ADDR32)
+# define S6_ADDRXX s6_addr32
+#elif defined(HAVE_STRUCT_IN6_ADDR_S6_ADDR16)
+# define S6_ADDRXX s6_addr16
+#else
+# define S6_ADDRXX s6_addr
+#endif
+	for (x = 0; x < COUNTOF(pfx.S6_ADDRXX); x++) {
+		pfx.S6_ADDRXX[x] = src.S6_ADDRXX[x] & msk.S6_ADDRXX[x];
+	}
+#undef S6_ADDRXX
+
+	return pfx;
+}
+
+
+/*
+ * Find a matching restrictlist4 entry given the source address and
+ * port of an incoming packet.  This is used on the hot path.
+ */
+static inline restrict_u *
 match_restrict4_addr(
-	u_int32	addr,
-	u_short	port
+	const sockaddr_u *	addr
 	)
 {
 	const int	v6 = FALSE;
 	restrict_u *	res;
 	restrict_u *	next;
+	u_int32		pfx;
 
 	for (res = restrictlist4; res != NULL; res = next) {
 		next = res->link;
@@ -347,9 +381,10 @@ match_restrict4_addr(
 			free_res(res, v6);	/* zeroes the contents */
 			continue;
 		}
-		if (   res->u.v4.addr == (addr & res->u.v4.mask)
+		pfx = ipv4_prefix(SRCADR(addr), res->u.v4.mask);
+		if (   res->u.v4.addr == pfx
 		    && (   !(RESM_NTPONLY & res->mflags)
-			|| NTP_PORT == port)) {
+			|| NTP_PORT == SRCPORT(addr))) {
 
 			break;
 		}
@@ -358,27 +393,33 @@ match_restrict4_addr(
 }
 
 
-static restrict_u *
+/*
+ * Find a matching restrictlist6 entry given the source address and
+ * port of an incoming packet.  This is used on the hot path and
+ * is nearly the same logic as match_restrict4_addr except for the
+ * handling of scope.
+ */
+static inline restrict_u *
 match_restrict6_addr(
-	const struct in6_addr *	addr,
-	u_short			port
+	const sockaddr_u *	addr
 	)
 {
 	const int	v6 = TRUE;
 	restrict_u *	res;
 	restrict_u *	next;
-	struct in6_addr	masked;
+	struct in6_addr pfx;
 
 	for (res = restrictlist6; res != NULL; res = next) {
 		next = res->link;
 		if (res->expire > 0 && res->expire <= current_time) {
-			free_res(res, v6);	/* zeroes the contents */
+			free_res(res, v6);	/* zeroes *res */
 			continue;
 		}
-		MASK_IPV6_ADDR(&masked, addr, &res->u.v6.mask);
-		if (ADDR6_EQ(&masked, &res->u.v6.addr)
+		pfx = ipv6_prefix(SOCK_ADDR6(addr), res->u.v6.mask);
+		if (   ADDR6_EQ(&pfx, &res->u.v6.addr)
+		    && (0 == res->u.v6.scope || SCOPE(addr) == res->u.v6.scope)
 		    && (   !(RESM_NTPONLY & res->mflags)
-			|| NTP_PORT == (int)port)) {
+			|| NTP_PORT == SRCPORT(addr))) {
 
 			break;
 		}
@@ -390,11 +431,14 @@ match_restrict6_addr(
 /*
  * match_restrict_entry - find an exact match on a restrict list.
  *
- * Exact match is addr, mask, and mflags all equal.
+ * Exact match is addr, mask, scope and mflags all equal.
  * In order to use more common code for IPv4 and IPv6, this routine
  * requires the caller to populate a restrict_u with mflags and either
  * the v4 or v6 address and mask as appropriate.  Other fields in the
  * input restrict_u are ignored.
+ * 
+ * This is used by hack_restrict(), which maintains the restriction
+ * lists.
  */
 static restrict_u *
 match_restrict_entry(
@@ -482,14 +526,15 @@ res_sorts_before4(
  * res_sorts_before6 - compare IPv6 restriction entries
  *
  * Returns nonzero if r1 sorts before r2.  We sort by descending
- * address, then descending mask, then an intricate mflags sort
- * order explained in a block comment near the top of this file.
+ * address, then descending mask, descending scope, then an intricate
+ * mflags sort order explained in a block comment near the top of this
+ * file.
  */
 static int/*BOOL*/
 res_sorts_before6(
-	restrict_u* r1,
-	restrict_u* r2
-)
+	restrict_u *r1,
+	restrict_u *r2
+	)
 {
 	int r1_before_r2;
 	int cmp;
@@ -506,8 +551,15 @@ res_sorts_before6(
 		} else if (cmp < 0) {	/* r2->mask > r1->mask */
 			r1_before_r2 = FALSE;
 		} else {
-			r1_before_r2 = mflags_sorts_before(r1->mflags,
-							   r2->mflags);
+			if (r1->u.v6.scope > r2->u.v6.scope) {
+				r1_before_r2 = TRUE;
+			} else if (r1->u.v6.scope < r2->u.v6.scope) {
+				r1_before_r2 = FALSE;
+			} else {
+				r1_before_r2 = mflags_sorts_before(
+						   r1->mflags,
+						   r2->mflags);
+			}
 		}
 	}
 
@@ -520,71 +572,43 @@ res_sorts_before6(
  */
 void
 restrictions(
-	sockaddr_u *srcadr,
-	r4addr *r4a
+	sockaddr_u *	srcadr,
+	r4addr *	r4a
 	)
 {
-	restrict_u *match;
-	struct in6_addr *pin6;
+	restrict_u *	match;
 
 	DEBUG_REQUIRE(NULL != r4a);
-
 	res_calls++;
 
-	if (IS_IPV4(srcadr)) {
-		/*
-		 * Ignore any packets with a multicast source address
-		 * (this should be done early in the receive process,
-		 * not later!)
-		 */
-		if (IN_CLASSD(SRCADR(srcadr))) {
-			goto multicast;
-		}
-
-		match = match_restrict4_addr(SRCADR(srcadr),
-					     SRCPORT(srcadr));
-		DEBUG_INSIST(match != NULL);
-		match->count++;
-		/*
-		 * res_not_found counts only use of the final default
-		 * entry, not any "restrict default ntpport ...", which
-		 * would be just before the final default.
-		 */
-		if (&restrict_def4 == match)
-			res_not_found++;
-		else
-			res_found++;
-		r4a->rflags = match->rflags;
-		r4a->ippeerlimit = match->ippeerlimit;
-	} else {
-		DEBUG_REQUIRE(IS_IPV6(srcadr));
-
-		pin6 = PSOCK_ADDR6(srcadr);
-
-		/*
-		 * Ignore any packets with a multicast source address
-		 * (this should be done early in the receive process,
-		 * not later!)
-		 */
-		if (IN6_IS_ADDR_MULTICAST(pin6)) {
-			goto multicast;
-		}
-		match = match_restrict6_addr(pin6, SRCPORT(srcadr));
-		DEBUG_INSIST(match != NULL);
-		match->count++;
-		if (&restrict_def6 == match)
-			res_not_found++;
-		else
-			res_found++;
-		r4a->rflags = match->rflags;
-		r4a->ippeerlimit = match->ippeerlimit;
+	/*
+	 * Ignore any packets with a multicast source address.
+	 * This should be done early in the receive process.
+	 */
+	if (IS_MCAST(srcadr)) {
+		r4a->rflags = RES_IGNORE;
+		r4a->ippeerlimit = 0;
+		return;
 	}
-
-	return;
-
-    multicast:
-	r4a->rflags = RES_IGNORE;
-	r4a->ippeerlimit = 0;
+	if (IS_IPV6(srcadr)) {
+		match = match_restrict6_addr(srcadr);
+	} else {
+		match = match_restrict4_addr(srcadr);
+	}
+	DEBUG_INSIST(match != NULL);
+	match->count++;
+	/*
+	 * res_not_found counts only use of the final default
+	 * entry, not any "restrict default ntpport ...", which
+	 * would be just before the final default.
+	 */
+	if (NULL == match->link) {
+		res_not_found++;
+	} else {
+		res_found++;
+	}
+	r4a->rflags = match->rflags;
+	r4a->ippeerlimit = match->ippeerlimit;
 }
 
 
@@ -677,8 +701,9 @@ hack_restrict(
 		 * comparison as byte sequences (e.g. memcmp())
 		 */
 		match.u.v6.mask = SOCK_ADDR6(resmask);
-		MASK_IPV6_ADDR(&match.u.v6.addr, PSOCK_ADDR6(resaddr),
-			       &match.u.v6.mask);
+		match.u.v6.addr = ipv6_prefix(SOCK_ADDR6(resaddr),
+					      match.u.v6.mask);
+		match.u.v6.scope = SCOPE(resaddr);
 	}
 
 	match.mflags = mflags;
@@ -797,7 +822,7 @@ restrict_source(
 		success = hack_restrict(RESTRICT_REMOVE, addr, &onesmask,
 					0, RESM_SOURCE, 0, 0);
 		if (success) {
-			DPRINTF(1, ("%s %s removed", __func__,
+			DPRINTF(1, ("%s %s removed\n", __func__,
 				    stoa(addr)));
 		} else {
 			msyslog(LOG_ERR, "%s remove %s failed",

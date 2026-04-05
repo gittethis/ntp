@@ -1,7 +1,7 @@
 /*
  *  EDIT THIS FILE WITH CAUTION  (ntpd-opts.c)
  *
- *  It has been AutoGen-ed  May 25, 2024 at 12:03:09 AM by AutoGen 5.18.16
+ *  It has been AutoGen-ed  December  1, 2025 at 06:26:48 PM by AutoGen 5.18.16
  *  From the definitions    ntpd-opts.def
  *  and the template file   options
  *
@@ -79,7 +79,7 @@ extern FILE * option_usage_fp;
 /**
  *  static const strings for ntpd options
  */
-static char const ntpd_opt_strs[3133] =
+static char const ntpd_opt_strs[3242] =
 /*     0 */ "ntpd 4.2.8p18\n"
             "Copyright (C) 1992-2024 The University of Delaware and Network Time Foundation, all rights reserved.\n"
             "This is free software. It is licensed for use, modification and\n"
@@ -194,28 +194,31 @@ static char const ntpd_opt_strs[3133] =
 /*  2609 */ "Slew up to 600 seconds\0"
 /*  2632 */ "SLEW\0"
 /*  2637 */ "slew\0"
-/*  2642 */ "Use CPU cycle counter (Windows only)\0"
-/*  2679 */ "USEPCC\0"
-/*  2686 */ "usepcc\0"
-/*  2693 */ "Force CPU cycle counter use (Windows only)\0"
-/*  2736 */ "PCCFREQ\0"
-/*  2744 */ "pccfreq\0"
-/*  2752 */ "Register with mDNS as a NTP server\0"
-/*  2787 */ "MDNS\0"
-/*  2792 */ "mdns\0"
-/*  2797 */ "display extended usage information and exit\0"
-/*  2841 */ "help\0"
-/*  2846 */ "extended usage information passed thru pager\0"
-/*  2891 */ "more-help\0"
-/*  2901 */ "output version information and exit\0"
-/*  2937 */ "version\0"
-/*  2945 */ "NTPD\0"
-/*  2950 */ "ntpd - NTP daemon program - Ver. 4.2.8p18\n"
+/*  2642 */ "Configure receive timestamps of UDP packets (run as Admin)\0"
+/*  2701 */ "ENABLE_UDP_TIMESTAMPS\0"
+/*  2723 */ "enable-udp-timestamps\0"
+/*  2745 */ "Use CPU cycle counter (up to Windows 7)\0"
+/*  2785 */ "USEPCC\0"
+/*  2792 */ "usepcc\0"
+/*  2799 */ "Force CPU cycle counter use (up to Windows 7)\0"
+/*  2845 */ "PCCFREQ\0"
+/*  2853 */ "pccfreq\0"
+/*  2861 */ "Register with mDNS as a NTP server\0"
+/*  2896 */ "MDNS\0"
+/*  2901 */ "mdns\0"
+/*  2906 */ "display extended usage information and exit\0"
+/*  2950 */ "help\0"
+/*  2955 */ "extended usage information passed thru pager\0"
+/*  3000 */ "more-help\0"
+/*  3010 */ "output version information and exit\0"
+/*  3046 */ "version\0"
+/*  3054 */ "NTPD\0"
+/*  3059 */ "ntpd - NTP daemon program - Ver. 4.2.8p18\n"
             "Usage:  %s [ -<flag> [<val>] | --<name>[{=| }<val>] ]... \\\n"
             "\t\t[ <server1> ... <serverN> ]\n\0"
-/*  3082 */ "https://bugs.ntp.org, bugs@ntp.org\0"
-/*  3117 */ "\n\0"
-/*  3119 */ "ntpd 4.2.8p18";
+/*  3191 */ "https://bugs.ntp.org, bugs@ntp.org\0"
+/*  3226 */ "\n\0"
+/*  3228 */ "ntpd 4.2.8p18";
 
 /**
  *  ipv4 option description with
@@ -700,15 +703,35 @@ static int const aWait_SyncCantList[] = {
 #define SLEW_FLAGS     (OPTST_DISABLED)
 
 /**
+ *  enable-udp-timestamps option description:
+ */
+#ifdef SYS_WINNT
+/** Descriptive text for the enable-udp-timestamps option */
+#define ENABLE_UDP_TIMESTAMPS_DESC      (ntpd_opt_strs+2642)
+/** Upper-cased name for the enable-udp-timestamps option */
+#define ENABLE_UDP_TIMESTAMPS_NAME      (ntpd_opt_strs+2701)
+/** Name string for the enable-udp-timestamps option */
+#define ENABLE_UDP_TIMESTAMPS_name      (ntpd_opt_strs+2723)
+/** Compiled in flag settings for the enable-udp-timestamps option */
+#define ENABLE_UDP_TIMESTAMPS_FLAGS     (OPTST_DISABLED)
+
+#else   /* disable enable-udp-timestamps */
+#define ENABLE_UDP_TIMESTAMPS_FLAGS     (OPTST_OMITTED | OPTST_NO_INIT)
+#define ENABLE_UDP_TIMESTAMPS_NAME      NULL
+#define ENABLE_UDP_TIMESTAMPS_DESC      NULL
+#define ENABLE_UDP_TIMESTAMPS_name      NULL
+#endif  /* SYS_WINNT */
+
+/**
  *  usepcc option description:
  */
 #ifdef SYS_WINNT
 /** Descriptive text for the usepcc option */
-#define USEPCC_DESC      (ntpd_opt_strs+2642)
+#define USEPCC_DESC      (ntpd_opt_strs+2745)
 /** Upper-cased name for the usepcc option */
-#define USEPCC_NAME      (ntpd_opt_strs+2679)
+#define USEPCC_NAME      (ntpd_opt_strs+2785)
 /** Name string for the usepcc option */
-#define USEPCC_name      (ntpd_opt_strs+2686)
+#define USEPCC_name      (ntpd_opt_strs+2792)
 /** Compiled in flag settings for the usepcc option */
 #define USEPCC_FLAGS     (OPTST_DISABLED)
 
@@ -724,11 +747,11 @@ static int const aWait_SyncCantList[] = {
  */
 #ifdef SYS_WINNT
 /** Descriptive text for the pccfreq option */
-#define PCCFREQ_DESC      (ntpd_opt_strs+2693)
+#define PCCFREQ_DESC      (ntpd_opt_strs+2799)
 /** Upper-cased name for the pccfreq option */
-#define PCCFREQ_NAME      (ntpd_opt_strs+2736)
+#define PCCFREQ_NAME      (ntpd_opt_strs+2845)
 /** Name string for the pccfreq option */
-#define PCCFREQ_name      (ntpd_opt_strs+2744)
+#define PCCFREQ_name      (ntpd_opt_strs+2853)
 /** Compiled in flag settings for the pccfreq option */
 #define PCCFREQ_FLAGS     (OPTST_DISABLED \
         | OPTST_SET_ARGTYPE(OPARG_TYPE_STRING))
@@ -745,11 +768,11 @@ static int const aWait_SyncCantList[] = {
  */
 #ifdef HAVE_DNSREGISTRATION
 /** Descriptive text for the mdns option */
-#define MDNS_DESC      (ntpd_opt_strs+2752)
+#define MDNS_DESC      (ntpd_opt_strs+2861)
 /** Upper-cased name for the mdns option */
-#define MDNS_NAME      (ntpd_opt_strs+2787)
+#define MDNS_NAME      (ntpd_opt_strs+2896)
 /** Name string for the mdns option */
-#define MDNS_name      (ntpd_opt_strs+2792)
+#define MDNS_name      (ntpd_opt_strs+2901)
 /** Compiled in flag settings for the mdns option */
 #define MDNS_FLAGS     (OPTST_DISABLED)
 
@@ -763,11 +786,11 @@ static int const aWait_SyncCantList[] = {
 /*
  *  Help/More_Help/Version option descriptions:
  */
-#define HELP_DESC       (ntpd_opt_strs+2797)
-#define HELP_name       (ntpd_opt_strs+2841)
+#define HELP_DESC       (ntpd_opt_strs+2906)
+#define HELP_name       (ntpd_opt_strs+2950)
 #ifdef HAVE_WORKING_FORK
-#define MORE_HELP_DESC  (ntpd_opt_strs+2846)
-#define MORE_HELP_name  (ntpd_opt_strs+2891)
+#define MORE_HELP_DESC  (ntpd_opt_strs+2955)
+#define MORE_HELP_name  (ntpd_opt_strs+3000)
 #define MORE_HELP_FLAGS (OPTST_IMM | OPTST_NO_INIT)
 #else
 #define MORE_HELP_DESC  HELP_DESC
@@ -780,8 +803,8 @@ static int const aWait_SyncCantList[] = {
 #  define VER_FLAGS     (OPTST_SET_ARGTYPE(OPARG_TYPE_STRING) | \
                          OPTST_ARG_OPTIONAL | OPTST_IMM | OPTST_NO_INIT)
 #endif
-#define VER_DESC        (ntpd_opt_strs+2901)
-#define VER_name        (ntpd_opt_strs+2937)
+#define VER_DESC        (ntpd_opt_strs+3010)
+#define VER_name        (ntpd_opt_strs+3046)
 /**
  *  Declare option callback procedures
  */
@@ -1185,8 +1208,20 @@ static tOptDesc optDesc[OPTION_CT] = {
      /* desc, NAME, name */ SLEW_DESC, SLEW_NAME, SLEW_name,
      /* disablement strs */ NULL, NULL },
 
-  {  /* entry idx, value */ 32, VALUE_OPT_USEPCC,
-     /* equiv idx, value */ 32, VALUE_OPT_USEPCC,
+  {  /* entry idx, value */ 32, VALUE_OPT_ENABLE_UDP_TIMESTAMPS,
+     /* equiv idx, value */ 32, VALUE_OPT_ENABLE_UDP_TIMESTAMPS,
+     /* equivalenced to  */ NO_EQUIVALENT,
+     /* min, max, act ct */ 0, 1, 0,
+     /* opt state flags  */ ENABLE_UDP_TIMESTAMPS_FLAGS, 0,
+     /* last opt argumnt */ { NULL }, /* --enable-udp-timestamps */
+     /* arg list/cookie  */ NULL,
+     /* must/cannot opts */ NULL, NULL,
+     /* option proc      */ NULL,
+     /* desc, NAME, name */ ENABLE_UDP_TIMESTAMPS_DESC, ENABLE_UDP_TIMESTAMPS_NAME, ENABLE_UDP_TIMESTAMPS_name,
+     /* disablement strs */ NULL, NULL },
+
+  {  /* entry idx, value */ 33, VALUE_OPT_USEPCC,
+     /* equiv idx, value */ 33, VALUE_OPT_USEPCC,
      /* equivalenced to  */ NO_EQUIVALENT,
      /* min, max, act ct */ 0, 1, 0,
      /* opt state flags  */ USEPCC_FLAGS, 0,
@@ -1197,8 +1232,8 @@ static tOptDesc optDesc[OPTION_CT] = {
      /* desc, NAME, name */ USEPCC_DESC, USEPCC_NAME, USEPCC_name,
      /* disablement strs */ NULL, NULL },
 
-  {  /* entry idx, value */ 33, VALUE_OPT_PCCFREQ,
-     /* equiv idx, value */ 33, VALUE_OPT_PCCFREQ,
+  {  /* entry idx, value */ 34, VALUE_OPT_PCCFREQ,
+     /* equiv idx, value */ 34, VALUE_OPT_PCCFREQ,
      /* equivalenced to  */ NO_EQUIVALENT,
      /* min, max, act ct */ 0, 1, 0,
      /* opt state flags  */ PCCFREQ_FLAGS, 0,
@@ -1209,8 +1244,8 @@ static tOptDesc optDesc[OPTION_CT] = {
      /* desc, NAME, name */ PCCFREQ_DESC, PCCFREQ_NAME, PCCFREQ_name,
      /* disablement strs */ NULL, NULL },
 
-  {  /* entry idx, value */ 34, VALUE_OPT_MDNS,
-     /* equiv idx, value */ 34, VALUE_OPT_MDNS,
+  {  /* entry idx, value */ 35, VALUE_OPT_MDNS,
+     /* equiv idx, value */ 35, VALUE_OPT_MDNS,
      /* equivalenced to  */ NO_EQUIVALENT,
      /* min, max, act ct */ 0, 1, 0,
      /* opt state flags  */ MDNS_FLAGS, 0,
@@ -1263,21 +1298,21 @@ static tOptDesc optDesc[OPTION_CT] = {
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /** Reference to the upper cased version of ntpd. */
-#define zPROGNAME       (ntpd_opt_strs+2945)
+#define zPROGNAME       (ntpd_opt_strs+3054)
 /** Reference to the title line for ntpd usage. */
-#define zUsageTitle     (ntpd_opt_strs+2950)
+#define zUsageTitle     (ntpd_opt_strs+3059)
 /** There is no ntpd configuration file. */
 #define zRcName         NULL
 /** There are no directories to search for ntpd config files. */
 #define apzHomeList     NULL
 /** The ntpd program bug email address. */
-#define zBugsAddr       (ntpd_opt_strs+3082)
+#define zBugsAddr       (ntpd_opt_strs+3191)
 /** Clarification/explanation of what ntpd does. */
-#define zExplain        (ntpd_opt_strs+3117)
+#define zExplain        (ntpd_opt_strs+3226)
 /** Extra detail explaining what ntpd does. */
 #define zDetail         (NULL)
 /** The full version string for ntpd. */
-#define zFullVersion    (ntpd_opt_strs+3119)
+#define zFullVersion    (ntpd_opt_strs+3228)
 /* extracted from optcode.tlib near line 342 */
 
 #if defined(ENABLE_NLS)
@@ -1399,7 +1434,7 @@ tOptions ntpdOptions = {
       NO_EQUIVALENT, /* '-#' option index */
       NO_EQUIVALENT /* index of default opt */
     },
-    38 /* full option count */, 35 /* user option count */,
+    39 /* full option count */, 36 /* user option count */,
     ntpd_full_usage, ntpd_short_usage,
     NULL, NULL,
     PKGDATADIR, ntpd_packager_info
@@ -1657,10 +1692,13 @@ implied warranty.\n"));
   puts(_("Slew up to 600 seconds"));
 
   /* referenced via ntpdOptions.pOptDesc->pzText */
-  puts(_("Use CPU cycle counter (Windows only)"));
+  puts(_("Configure receive timestamps of UDP packets (run as Admin)"));
 
   /* referenced via ntpdOptions.pOptDesc->pzText */
-  puts(_("Force CPU cycle counter use (Windows only)"));
+  puts(_("Use CPU cycle counter (up to Windows 7)"));
+
+  /* referenced via ntpdOptions.pOptDesc->pzText */
+  puts(_("Force CPU cycle counter use (up to Windows 7)"));
 
   /* referenced via ntpdOptions.pOptDesc->pzText */
   puts(_("Register with mDNS as a NTP server"));

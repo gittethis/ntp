@@ -240,13 +240,17 @@ struct {							\
 
 /*
  * For DEBUG builds only, verify both or neither of the anchor pointers
- * are NULL with each operation.
+ * are NULL and that the tail pointer is correct if debug >= 4.
  */
 #if !defined(NTP_DEBUG_LISTS_H)
 #define	CHECK_FIFO_CONSISTENCY(anchor)	do { } while (FALSE)
 #else
 #define	CHECK_FIFO_CONSISTENCY(anchor)				\
-	check_gen_fifo_consistency(&(anchor))
+	do {							\
+		if (debug >= 4) {				\
+			check_gen_fifo_consistency(&(anchor));	\
+		}						\
+	} while (FALSE)
 void	check_gen_fifo_consistency(void *fifo);
 #endif
 

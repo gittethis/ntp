@@ -251,6 +251,8 @@ This software is released under the NTP license, &lt;http://ntp.org/license&gt;.
 </td></tr>
 <tr><td align="left" valign="top">&bull; <a href="#ntpd-slew">ntpd slew</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">slew option (-x)
 </td></tr>
+<tr><td align="left" valign="top">&bull; <a href="#ntpd-enable_002dudp_002dtimestamps">ntpd enable-udp-timestamps</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">enable-udp-timestamps option
+</td></tr>
 <tr><td align="left" valign="top">&bull; <a href="#ntpd-usepcc">ntpd usepcc</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">usepcc option
 </td></tr>
 <tr><td align="left" valign="top">&bull; <a href="#ntpd-pccfreq">ntpd pccfreq</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">pccfreq option
@@ -823,7 +825,7 @@ wait for the first set of the clock before proceeding.
 </p><hr>
 <span id="ntpd-slew"></span><div class="header">
 <p>
-Next: <a href="#ntpd-usepcc" accesskey="n" rel="next">ntpd usepcc</a>, Previous: <a href="#ntpd-wait_002dsync" accesskey="p" rel="prev">ntpd wait-sync</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
+Next: <a href="#ntpd-enable_002dudp_002dtimestamps" accesskey="n" rel="next">ntpd enable-udp-timestamps</a>, Previous: <a href="#ntpd-wait_002dsync" accesskey="p" rel="prev">ntpd wait-sync</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
 </div>
 <span id="slew-option-_0028_002dx_0029"></span><h4 class="subsection">1.1.27 slew option (-x)</h4>
 <span id="index-ntpd_002dslew"></span>
@@ -843,14 +845,34 @@ See the
 configuration file directive for other options.
 Note: The kernel time discipline is disabled with this option.
 </p><hr>
+<span id="ntpd-enable_002dudp_002dtimestamps"></span><div class="header">
+<p>
+Next: <a href="#ntpd-usepcc" accesskey="n" rel="next">ntpd usepcc</a>, Previous: <a href="#ntpd-slew" accesskey="p" rel="prev">ntpd slew</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
+</div>
+<span id="enable_002dudp_002dtimestamps-option"></span><h4 class="subsection">1.1.28 enable-udp-timestamps option</h4>
+<span id="index-ntpd_002denable_002dudp_002dtimestamps"></span>
+
+<p>This is the &ldquo;configure receive timestamps of udp packets (run as admin)&rdquo; option.
+</p>
+<p>This option has some usage constraints.  It:
+</p><ul>
+<li> must be compiled in by defining <code>SYS_WINNT</code> during the compilation.
+</li></ul>
+
+<p>Configure each network adapter to capture a timestamp for each UDP
+packet received in the kernel.  This option modifies registry settings
+that require Administrator access.  The adapters or Windows must be
+restarted for the changes to take effect.  The registry values are
+type <code>REG_DWORD</code> named <code>SoftwareTimestampSettings</code>.
+</p><hr>
 <span id="ntpd-usepcc"></span><div class="header">
 <p>
-Next: <a href="#ntpd-pccfreq" accesskey="n" rel="next">ntpd pccfreq</a>, Previous: <a href="#ntpd-slew" accesskey="p" rel="prev">ntpd slew</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
+Next: <a href="#ntpd-pccfreq" accesskey="n" rel="next">ntpd pccfreq</a>, Previous: <a href="#ntpd-enable_002dudp_002dtimestamps" accesskey="p" rel="prev">ntpd enable-udp-timestamps</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
 </div>
-<span id="usepcc-option"></span><h4 class="subsection">1.1.28 usepcc option</h4>
+<span id="usepcc-option"></span><h4 class="subsection">1.1.29 usepcc option</h4>
 <span id="index-ntpd_002dusepcc"></span>
 
-<p>This is the &ldquo;use cpu cycle counter (windows only)&rdquo; option.
+<p>This is the &ldquo;use cpu cycle counter (up to windows 7)&rdquo; option.
 </p>
 <p>This option has some usage constraints.  It:
 </p><ul>
@@ -860,16 +882,17 @@ Next: <a href="#ntpd-pccfreq" accesskey="n" rel="next">ntpd pccfreq</a>, Previou
 <p>Attempt to substitute the CPU counter for <code>QueryPerformanceCounter</code>.
 The CPU counter and <code>QueryPerformanceCounter</code> are compared, and if
 they have the same frequency, the CPU counter (RDTSC on x86) is
-used directly, saving the overhead of a system call.
+used directly, saving the overhead of a system call.  This option has no
+effect on Windows 8 and later.
 </p><hr>
 <span id="ntpd-pccfreq"></span><div class="header">
 <p>
 Next: <a href="#ntpd-mdns" accesskey="n" rel="next">ntpd mdns</a>, Previous: <a href="#ntpd-usepcc" accesskey="p" rel="prev">ntpd usepcc</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
 </div>
-<span id="pccfreq-option"></span><h4 class="subsection">1.1.29 pccfreq option</h4>
+<span id="pccfreq-option"></span><h4 class="subsection">1.1.30 pccfreq option</h4>
 <span id="index-ntpd_002dpccfreq"></span>
 
-<p>This is the &ldquo;force cpu cycle counter use (windows only)&rdquo; option.
+<p>This is the &ldquo;force cpu cycle counter use (up to windows 7)&rdquo; option.
 This option takes a string argument.
 </p>
 <p>This option has some usage constraints.  It:
@@ -877,15 +900,16 @@ This option takes a string argument.
 <li> must be compiled in by defining <code>SYS_WINNT</code> during the compilation.
 </li></ul>
 
-<p>Force substitution the CPU counter for <code>QueryPerformanceCounter</code>.
+<p>Force substituting the CPU counter for <code>QueryPerformanceCounter</code>.
 The CPU counter (RDTSC on x86) is used unconditionally with the
-given frequency (in Hz).
+given frequency (in Hz).  This option has no effect on Windows 8 and
+later.
 </p><hr>
 <span id="ntpd-mdns"></span><div class="header">
 <p>
 Next: <a href="#ntpd-config" accesskey="n" rel="next">ntpd config</a>, Previous: <a href="#ntpd-pccfreq" accesskey="p" rel="prev">ntpd pccfreq</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
 </div>
-<span id="mdns-option-_0028_002dm_0029"></span><h4 class="subsection">1.1.30 mdns option (-m)</h4>
+<span id="mdns-option-_0028_002dm_0029"></span><h4 class="subsection">1.1.31 mdns option (-m)</h4>
 <span id="index-ntpd_002dmdns"></span>
 
 <p>This is the &ldquo;register with mdns as a ntp server&rdquo; option.
@@ -904,7 +928,7 @@ the server to be discovered via mDNS client lookup.
 <p>
 Next: <a href="#ntpd-exit-status" accesskey="n" rel="next">ntpd exit status</a>, Previous: <a href="#ntpd-mdns" accesskey="p" rel="prev">ntpd mdns</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
 </div>
-<span id="presetting_002fconfiguring-ntpd"></span><h4 class="subsection">1.1.31 presetting/configuring ntpd</h4>
+<span id="presetting_002fconfiguring-ntpd"></span><h4 class="subsection">1.1.32 presetting/configuring ntpd</h4>
 
 <p>Any option that is not marked as <i>not presettable</i> may be preset by
 loading values from environment variables named <code>NTPD</code> and <code>NTPD_&lt;OPTION_NAME&gt;</code>.  <code>&lt;OPTION_NAME&gt;</code> must be one of
@@ -940,7 +964,7 @@ Only the first letter of the argument is examined:
 <p>
 Next: <a href="#ntpd-Usage" accesskey="n" rel="next">ntpd Usage</a>, Previous: <a href="#ntpd-config" accesskey="p" rel="prev">ntpd config</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
 </div>
-<span id="ntpd-exit-status-1"></span><h4 class="subsection">1.1.32 ntpd exit status</h4>
+<span id="ntpd-exit-status-1"></span><h4 class="subsection">1.1.33 ntpd exit status</h4>
 
 <p>One of the following exit values will be returned:
 </p><dl compact="compact">
@@ -956,31 +980,31 @@ Next: <a href="#ntpd-Usage" accesskey="n" rel="next">ntpd Usage</a>, Previous: <
 <p>
 Next: <a href="#ntpd-Files" accesskey="n" rel="next">ntpd Files</a>, Previous: <a href="#ntpd-exit-status" accesskey="p" rel="prev">ntpd exit status</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
 </div>
-<span id="ntpd-Usage-1"></span><h4 class="subsection">1.1.33 ntpd Usage</h4>
+<span id="ntpd-Usage-1"></span><h4 class="subsection">1.1.34 ntpd Usage</h4>
 <hr>
 <span id="ntpd-Files"></span><div class="header">
 <p>
 Next: <a href="#ntpd-See-Also" accesskey="n" rel="next">ntpd See Also</a>, Previous: <a href="#ntpd-Usage" accesskey="p" rel="prev">ntpd Usage</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
 </div>
-<span id="ntpd-Files-1"></span><h4 class="subsection">1.1.34 ntpd Files</h4>
+<span id="ntpd-Files-1"></span><h4 class="subsection">1.1.35 ntpd Files</h4>
 <hr>
 <span id="ntpd-See-Also"></span><div class="header">
 <p>
 Next: <a href="#ntpd-Bugs" accesskey="n" rel="next">ntpd Bugs</a>, Previous: <a href="#ntpd-Files" accesskey="p" rel="prev">ntpd Files</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
 </div>
-<span id="ntpd-See-Also-1"></span><h4 class="subsection">1.1.35 ntpd See Also</h4>
+<span id="ntpd-See-Also-1"></span><h4 class="subsection">1.1.36 ntpd See Also</h4>
 <hr>
 <span id="ntpd-Bugs"></span><div class="header">
 <p>
 Next: <a href="#ntpd-Notes" accesskey="n" rel="next">ntpd Notes</a>, Previous: <a href="#ntpd-See-Also" accesskey="p" rel="prev">ntpd See Also</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
 </div>
-<span id="ntpd-Bugs-1"></span><h4 class="subsection">1.1.36 ntpd Bugs</h4>
+<span id="ntpd-Bugs-1"></span><h4 class="subsection">1.1.37 ntpd Bugs</h4>
 <hr>
 <span id="ntpd-Notes"></span><div class="header">
 <p>
 Previous: <a href="#ntpd-Bugs" accesskey="p" rel="prev">ntpd Bugs</a>, Up: <a href="#ntpd-Invocation" accesskey="u" rel="up">ntpd Invocation</a> &nbsp; </p>
 </div>
-<span id="ntpd-Notes-1"></span><h4 class="subsection">1.1.37 ntpd Notes</h4>
+<span id="ntpd-Notes-1"></span><h4 class="subsection">1.1.38 ntpd Notes</h4>
 
 <hr>
 <span id="Usage"></span><div class="header">

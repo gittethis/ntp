@@ -17,16 +17,15 @@ libunity_a_CFLAGS =                  	\
 libunity_a_SOURCES =				\
 	libpkgver-colcomp.c			\
 	unity.c					\
+	unity_fixture.c				\
 	ulib_setup.c				\
 	ulib_teardown.c				\
 	unity.h					\
 	unity_config.h				\
 	unity_internals.h			\
-	unity_fixture.c				\
 	unity_fixture.h				\
 	unity_fixture_internals.h		\
 	unity_fixture_malloc_overrides.h	\
-	unity_config.h				\
 	$(NULL)
 
 include $(top_srcdir)/depsver.mf

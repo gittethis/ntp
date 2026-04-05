@@ -2374,9 +2374,6 @@ local_input(
 						sizeof(parsetime_t));
 					buf->recv_length  = sizeof(parsetime_t);
 					buf->recv_time    = rbufp->recv_time;
-#ifndef HAVE_IO_COMPLETION_PORT
-					buf->srcadr       = rbufp->srcadr;
-#endif
 					buf->dstadr       = rbufp->dstadr;
 					buf->receiver     = rbufp->receiver;
 					buf->fd           = rbufp->fd;

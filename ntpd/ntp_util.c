@@ -56,7 +56,6 @@
 static	char *key_file_name;		/* keys file name */
 static char	  *leapfile_name;		/* leapseconds file name */
 static struct stat leapfile_stat;	/* leapseconds file stat() buffer */
-static int /*BOOL*/have_leapfile = FALSE;
 static int /*BOOL*/chck_leaphash = TRUE;
 char	*stats_drift_file;		/* frequency file name */
 static	char *stats_temp_file;		/* temp frequency file name */
@@ -101,13 +100,8 @@ static double prev_drift_comp;		/* last frequency update */
  */
 static	void	record_sys_stats(void);
 	void	ntpd_time_stepped(void);
-static  void	check_leap_expiration(int, uint32_t, const time_t*);
-
-/*
- * Prototypes
- */
 #ifdef DEBUG
-void	uninit_util(void);
+	void	uninit_util(void);
 #endif
 
 /*
@@ -117,9 +111,7 @@ void	uninit_util(void);
 void
 uninit_util(void)
 {
-#if defined(_MSC_VER) && defined (_DEBUG)
-	_CrtCheckMemory();
-#endif
+	debug_check_heap();
 	if (stats_drift_file) {
 		free(stats_drift_file);
 		free(stats_temp_file);
@@ -138,14 +130,11 @@ uninit_util(void)
 	filegen_unregister("protostats");
 #ifdef AUTOKEY
 	filegen_unregister("cryptostats");
-#endif	/* AUTOKEY */
+#endif
 #ifdef DEBUG_TIMING
 	filegen_unregister("timingstats");
-#endif	/* DEBUG_TIMING */
-
-#if defined(_MSC_VER) && defined (_DEBUG)
-	_CrtCheckMemory();
 #endif
+	debug_check_heap();
 }
 #endif /* DEBUG */
 
@@ -339,14 +328,16 @@ allow_config(
 	u_int		mask;
 	int		retv;
 
+	DEBUG_REQUIRE(option < sizeof(mask) * 8);
+	mask = 1u << option;
 	if (cmdopt) {
-		DEBUG_REQUIRE(option < sizeof(mask) * 8);
-		mask = 1u << option;
-		retv = !(seen & mask);
-		seen |= mask;
+		/* from command line */
+		retv = TRUE;
 	} else {
-		retv = FALSE;
+		/* from ntp.conf or runtime config */
+		retv = !(seen & mask);
 	}
+	seen |= mask;
 	return retv;
 }
 
@@ -530,31 +521,9 @@ stats_config(
 		leapfile_name = erealloc(leapfile_name, len + 1);
 		memcpy(leapfile_name, value, len + 1);
 		chck_leaphash = optflag;
-
-		if (leapsec_load_file(
-			    leapfile_name, &leapfile_stat,
-			    TRUE, TRUE, chck_leaphash)) {
-			leap_signature_t lsig;
-
-			get_systime(&now);
-			time(&ttnow);
-			leapsec_getsig(&lsig);
-			mprintf_event(EVNT_TAI, NULL,
-				      "%d leap %s expire%s %s",
-				      lsig.taiof,
-				      fstostr(lsig.ttime),
-				      leapsec_expired(now.l_ui, NULL)
-					  ? "d"
-					  : "s",
-				      fstostr(lsig.etime));
-
-			have_leapfile = TRUE;
-
-			/* force an immediate daily expiration check of
-			 * the leap seconds table
-			 */
-			check_leap_expiration(TRUE, now.l_ui, &ttnow);
-		}
+		get_systime(&now);
+		time(&ttnow);
+		check_leap_file(TRUE, now.l_ui, &ttnow);
 		break;
 
 	default:
@@ -945,53 +914,20 @@ check_leap_file(
 	const time_t *	systime
 	)
 {
-	/* just do nothing if there is no leap file */
-	if ( ! (leapfile_name && *leapfile_name))
-		return;
+	leap_signature_t lsig;
 
-	/* try to load leapfile, force it if no leapfile loaded yet */
-	if (leapsec_load_file(
-		    leapfile_name, &leapfile_stat,
-		    !have_leapfile, is_daily_check, chck_leaphash))
-		have_leapfile = TRUE;
-	else if (!have_leapfile)
-		return;
-
-	check_leap_expiration(is_daily_check, ntptime, systime);
-}
-
-/*
- * check expiration of a loaded leap table
- */
-static void
-check_leap_expiration(
-	int           is_daily_check,
-	uint32_t      ntptime       ,
-	const time_t *systime
-	)
-{
-	static const char * const logPrefix = "leapsecond file";
-	int  rc;
-
-	/* test the expiration of the leap data and log with proper
-	 * level and frequency (once/hour or once/day, depending on the
-	 * state.
-	 */
-	rc = leapsec_daystolive(ntptime, systime);
-	if (rc == 0) {
-		msyslog(LOG_WARNING,
-			"%s ('%s'): will expire in less than one day",
-			logPrefix, leapfile_name);
-	} else if (is_daily_check && rc < 28) {
-		if (rc < 0)
-			msyslog(LOG_ERR,
-				"%s ('%s'): expired %d day%s ago",
-				logPrefix, leapfile_name, -rc, (rc == -1 ? "" : "s"));
-		else
-			msyslog(LOG_WARNING,
-				"%s ('%s'): will expire in less than %d days",
-				logPrefix, leapfile_name, 1+rc);
+	if (leapsec_load_file(leapfile_name, &leapfile_stat, chck_leaphash)) {
+		leapsec_getsig(&lsig);
+		mprintf_event(EVNT_TAI, NULL, "%d leap %s expire%s %s",
+			lsig.taiof, fstostr(lsig.ttime),
+			leapsec_expired(ntptime, NULL)
+			    ? "d"
+			    : "s",
+			fstostr(lsig.etime));
+		/* Force an immediate expiration check of the leap table */
+		check_leap_expiration(leapfile_name, is_daily_check, ntptime, systime);
 	}
+
 }
 
 

@@ -188,7 +188,7 @@ esac
 dnl [Bug 1984] ntp/libisc fails to compile on OS X 10.7 (Lion)
 case "$host" in
  *-*-darwin*)
-    AC_DEFINE([__APPLE_USE_RFC_3542], [1], [Are we _special_?])
+    AC_DEFINE([__APPLE_USE_RFC_3542], [1], [OS X 10.7 workaround])
 esac
 
 
@@ -207,7 +207,8 @@ AC_CACHE_CHECK(
 	    ]]
 	)],
 	[isc_cv_found_ipv6=yes],
-	[isc_cv_found_ipv6=no]
+	[isc_cv_found_ipv6=no],
+	[isc_cv_found_ipv6=yes]
     )]
 )
 
@@ -279,7 +280,7 @@ esac
 case "$host" in
  *-sco-sysv*uw*|*-*-sysv*UnixWare*|*-*-sysv*OpenUNIX*)
     AC_DEFINE([ISC_PLATFORM_FIXIN6ISADDR], [1],
-	[Do we need to fix in6isaddr?])
+	[IN6_IS_ADDR_* broken?])
     isc_netinetin6_hack="#include <netinet/in6.h>"
     ;;
  *)
@@ -291,6 +292,66 @@ esac
 case "$isc_cv_found_ipv6" in
  yes)
     AC_DEFINE([ISC_PLATFORM_HAVEIPV6], [1], [have IPv6?])
+    dnl
+    dnl Haven't seen in6_addr.s6_addr64 yet, check would be here.
+    dnl
+    AC_CHECK_MEMBERS(
+	[struct in6_addr.s6_addr32],
+	[],	dnl				Action if found
+	[],	dnl				      not found
+	[
+	    #include <sys/types.h>
+	    #ifdef HAVE_NETINET_IN_H
+	    #include <netinet/in.h>
+	    #endif
+	    $isc_netinetin6_hack
+	    #ifdef HAVE_SYS_SOCKET_H
+	    #include <sys/socket.h>
+	    #endif
+	])
+esac
+
+case "$isc_cv_found_ipv6:$ac_cv_member_struct_in6_addr_s6_addr32" in
+ yes:no)
+    AC_CHECK_MEMBERS(
+	[struct in6_addr.__u6_addr.__u6_addr32],
+	[],	dnl				Action if found
+	[],	dnl				      not found
+	[
+	    #include <sys/types.h>
+	    #ifdef HAVE_NETINET_IN_H
+	    #include <netinet/in.h>
+	    #endif
+	    $isc_netinetin6_hack
+	    #ifdef HAVE_SYS_SOCKET_H
+	    #include <sys/socket.h>
+	    #endif
+	])
+    dnl		See also include/ntp_net.h for s6_addr32 definition
+esac
+
+case "$isc_cv_found_ipv6:$ac_cv_member_struct_in6_addr__u6_addr__u6_addr32" in
+ yes:no)
+    AC_CHECK_MEMBERS(
+	[struct in6_addr.s6_addr16],
+	[],	dnl				Action if found
+	[],	dnl				      not found
+	[
+	    #include <sys/types.h>
+	    #ifdef HAVE_NETINET_IN_H
+	    #include <netinet/in.h>
+	    #endif
+	    $isc_netinetin6_hack
+	    #ifdef HAVE_SYS_SOCKET_H
+	    #include <sys/socket.h>
+	    #endif
+	])
+	dnl	See also ports/winnt/include/config.h re: s6_words
+esac
+
+
+case "$isc_cv_found_ipv6" in
+ yes)
     AC_CACHE_CHECK(
 	[for in6_pktinfo],
 	[isc_cv_have_in6_pktinfo],

@@ -123,13 +123,13 @@
 #endif /* HAVE_LINUX_CAPABILITIES */
 #if defined(HAVE_PRIV_H) && defined(HAVE_SOLARIS_PRIVS)
 # include <priv.h>
-#endif /* HAVE_PRIV_H */
+#endif /* HAVE_PRIV_H && HAVE_SOLARIS_PRIVS */
 #if defined(HAVE_TRUSTEDBSD_MAC)
 # include <sys/mac.h>
 #endif /* HAVE_TRUSTEDBSD_MAC */
 #endif /* HAVE_DROPROOT */
 
-#if defined (LIBSECCOMP) && (KERN_SECCOMP)
+#if defined(LIBSECCOMP) && (KERN_SECCOMP)
 /* # include <sys/types.h> */
 # include <sys/resource.h>
 # include <seccomp.h>
@@ -145,20 +145,6 @@
 #ifdef HAVE_DNSREGISTRATION
 # include <dns_sd.h>
 DNSServiceRef mdns;
-#endif
-
-/* In case 'sysexits.h' is unavailable, define some exit codes here: */
-#ifndef EX_SOFTWARE
-# define EX_SOFTWARE	70
-#endif
-#ifndef EX_OSERR
-# define EX_OSERR	71
-#endif
-#ifndef EX_IOERR
-# define EX_IOERR	74
-#endif
-#ifndef EX_PROTOCOL
-#define EX_PROTOCOL	76
 #endif
 
 
@@ -229,6 +215,13 @@ char const *progname;
 
 int was_alarmed;
 
+#ifdef DECL_SYSCALL
+/*
+ * We put this here, since the argument profile is syscall-specific
+ */
+extern int syscall	(int, ...);
+#endif /* DECL_SYSCALL */
+
 
 #if !defined(SIM) && defined(SIGDIE1)
 static volatile int signalled	= 0;
@@ -274,7 +267,7 @@ static void	library_unexpected_error(const char *, int,
 #endif	/* !SIM */
 
 
-/* Bug2332 unearthed a problem in the interaction of reduced user
+/* Bug 2332 unearthed a problem in the interaction of reduced user
  * privileges, the limits on memory usage and some versions of the
  * pthread library on Linux systems. The 'pthread_cancel()' function and
  * likely some others need to track the stack of the thread involved,
@@ -294,7 +287,7 @@ static void	library_unexpected_error(const char *, int,
  * not possible everywhere, has shown to break the build of other
  * programs in the NTP suite and is now generally frowned upon.
  *
- * So we take a different approach here: We creat a worker thread that does
+ * So we take a different approach here: We create a worker thread that does
  * actually nothing except waiting for cancellation and cancel it. If
  * this is done before all the limitations are put in place, the
  * machinery is pre-heated and all the runtime stuff should be in place
@@ -307,7 +300,7 @@ static void	library_unexpected_error(const char *, int,
  * Addendum: Bug 2954 showed that the assumption that this should work
  * with all OS is wrong -- at least FreeBSD bombs heavily.
  */
-#ifdef NEED_PTHREAD_WARMUP
+#if !defined(SIM) && defined(NEED_PTHREAD_WARMUP)
 
 /* simple thread function: sleep until cancelled, just to exercise
  * thread cancellation.
@@ -330,21 +323,21 @@ my_pthread_warmup(void)
 {
 	pthread_t 	thread;
 	pthread_attr_t	thr_attr;
-	int       	rc;
+	int		rc;
 	
 	pthread_attr_init(&thr_attr);
-#if defined(HAVE_PTHREAD_ATTR_GETSTACKSIZE) && \
-    defined(HAVE_PTHREAD_ATTR_SETSTACKSIZE) && \
+#if defined(HAVE_PTHREAD_ATTR_SETSTACKSIZE) && \
     defined(PTHREAD_STACK_MIN)
 	{
 		size_t ssmin = 32*1024;	/* 32kB should be minimum */
 		if (ssmin < PTHREAD_STACK_MIN)
 			ssmin = PTHREAD_STACK_MIN;
 		rc = pthread_attr_setstacksize(&thr_attr, ssmin);
-		if (0 != rc)
+		if (0 != rc) {
 			msyslog(LOG_ERR,
 				"my_pthread_warmup: pthread_attr_setstacksize() -> %s",
 				strerror(rc));
+		}
 	}
 #endif
 	rc = pthread_create(
@@ -382,10 +375,10 @@ parse_cmdline_opts(
 	static int	parsed;
 	static int	optct;
 
-	if (!parsed)
+	if (!parsed) {
 		optct = ntpOptionProcess(&ntpdOptions, *pargc, *pargv);
-
-	parsed = 1;
+	}
+	parsed = TRUE;
 	
 	*pargc -= optct;
 	*pargv += optct;
@@ -467,6 +460,10 @@ get_aix_stack(void)
 static void
 catch_danger(int signo)
 {
+	/*
+	 * DLH: is the following text setpgid leftover from a copy/paste?
+	 * Also, is it safe to call msyslog() from a signal handler?
+	 */
 	msyslog(LOG_INFO, "ntpd: setpgid(): %m");
 	/* Make the system believe we'll free something, but don't do it! */
 	return;
@@ -540,7 +537,7 @@ set_process_priority(void)
 #  ifdef HAVE_ATT_NICE
 	if (!priority_done) {
 		errno = 0;
-		if (-1 == nice (NTPD_PRIO) && errno != 0)
+		if (-1 == nice(NTPD_PRIO) && errno != 0)
 			msyslog(LOG_ERR, "nice() error: %m");
 		else
 			++priority_done;
@@ -754,7 +751,7 @@ set_group_ids(void)
 	}
 	else if (pw)
 		if (0 != initgroups(pw->pw_name, pw->pw_gid)) {
-			msyslog(LOG_ERR, "initgroups(<%s>, %d) filed: %m", pw->pw_name, pw->pw_gid);
+			msyslog(LOG_ERR, "initgroups(<%s>, %d) failed: %m", pw->pw_name, pw->pw_gid);
 			return 0;
 		}
 	return 1;
@@ -829,6 +826,7 @@ ntpdmain(
 	int		zero;
 # endif
 
+	init_lib();
 # ifdef NEED_PTHREAD_WARMUP
 	my_pthread_warmup();
 # endif
@@ -856,9 +854,12 @@ ntpdmain(
 # ifdef DEBUG
 	    || debug
 # endif
-	    || HAVE_OPT(SAVECONFIGQUIT))
+# ifdef SYS_WINNT
+	    || HAVE_OPT(ENABLE_UDP_TIMESTAMPS)
+# endif
+	    || HAVE_OPT(SAVECONFIGQUIT)) {
 		nofork = TRUE;
-
+	}
 	init_logging(progname, NLOG_SYNCMASK, TRUE);
 	/* honor -l/--logfile option to log to a file */
 	if (HAVE_OPT(LOGFILE)) {
@@ -872,6 +873,11 @@ ntpdmain(
 		if (HAVE_OPT(SAVECONFIGQUIT))
 			syslogit = FALSE;
 	}
+# ifdef SYS_WINNT
+	if (HAVE_OPT(ENABLE_UDP_TIMESTAMPS)) {
+		exit(enable_udp_receive_timestamps());
+	}
+#endif
 	msyslog(LOG_NOTICE, "%s: Starting", Version);
 
 	{
@@ -999,7 +1005,6 @@ ntpdmain(
 	}
 # endif	/* HAVE_WORKING_FORK */
 
-	init_lib();
 # ifdef SYS_WINNT
 	/*
 	 * Make sure the service is initialized before we do anything else

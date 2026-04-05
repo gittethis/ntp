@@ -16,8 +16,13 @@ void lock_thread_to_processor(HANDLE);
  * SystemTimeToFileTime()
  */
 
-#define FILETIME_1970     0x019db1ded53e8000
+#define FILETIME_1970     0x019db1ded53e8000u
 #define HECTONANOSECONDS  10000000
+
+ /* 
+  * https://learn.microsoft.com/en-us/windows/desktop/SysInfo/registry-element-size-limits
+  */
+#define MAX_KEY_NAME_LEN 256
 
 /*
  * Multimedia Timer
@@ -46,5 +51,8 @@ typedef HRESULT (WINAPI *PSTD)(HANDLE hThread, PCWSTR pwstr);
 extern PSTD pSetThreadDescription;
 
 void lock_thread_to_processor(HANDLE);
+int  enable_udp_receive_timestamps(void);
+bool enable_one_udp_timestamp(HANDLE nic_key, const char *nic_key_path,
+			      DWORD *value);
 
 #endif

@@ -25,7 +25,7 @@
 #include "ntp.h"
 
 /*
- * socktoa - return a numeric host name from a sockaddr_storage structure
+ * Convert an IP address to text without port
  */
 const char *
 socktoa(
@@ -35,10 +35,10 @@ socktoa(
 	int		saved_errno;
 	char *		res;
 	char *		addr;
-	u_long		scope;
+	u_int32		scope;
 
 	saved_errno = socket_errno();
-	LIB_GETBUF(res);
+	res = lib_getbuf();
 
 	if (NULL == sock) {
 		strlcpy(res, "(null)", LIB_BUFLENGTH);
@@ -47,6 +47,10 @@ socktoa(
 
 		case AF_INET:
 		case AF_UNSPEC:
+			/*
+			 * DLH: Why treat AF_UNSPEC as IPv4 here?  This should
+			 * go away in ntp-dev.
+			 */
 			inet_ntop(AF_INET, PSOCK_ADDR4(sock), res,
 				  LIB_BUFLENGTH);
 			break;
@@ -57,8 +61,8 @@ socktoa(
 			scope = SCOPE_VAR(sock);
 			if (0 != scope && !strchr(res, '%')) {
 				addr = res;
-				LIB_GETBUF(res);
-				snprintf(res, LIB_BUFLENGTH, "%s%%%lu",
+				res = lib_getbuf();
+				snprintf(res, LIB_BUFLENGTH, "%s%%%u",
 					 addr, scope);
 				res[LIB_BUFLENGTH - 1] = '\0';
 			}
@@ -66,7 +70,7 @@ socktoa(
 
 		default:
 			snprintf(res, LIB_BUFLENGTH, 
-				 "(socktoa unknown family %d)", 
+				 "(socktoa unknown family %hu)", 
 				 AF(sock));
 		}
 	}
@@ -76,6 +80,9 @@ socktoa(
 }
 
 
+/*
+ * Convert an IP address to text with port
+ */
 const char *
 sockporttoa(
 	const sockaddr_u *sock
@@ -87,12 +94,41 @@ sockporttoa(
 
 	saved_errno = socket_errno();
 	atext = socktoa(sock);
-	LIB_GETBUF(buf);
-	snprintf(buf, LIB_BUFLENGTH,
-		 (IS_IPV6(sock))
-		     ? "[%s]:%hu"
-		     : "%s:%hu",
-		 atext, SRCPORT(sock));
+	buf = lib_getbuf();
+	snprintf(buf, LIB_BUFLENGTH, (IS_IPV6(sock))
+					? "[%s]:%hu"
+					: "%s:%hu",
+		atext, SRCPORT(sock));
+	errno = saved_errno;
+
+	return buf;
+}
+
+
+/*
+ * Convert an IP address and mask to text.  If the mask is regular,
+ * use prefix notation, otherwise address followed by mask.
+ */
+const char *
+sockmasktoa(
+	const sockaddr_u *	addr,
+	const sockaddr_u *	mask
+	)
+{
+	int		saved_errno;
+	int		prefix_bits;
+	char *		buf;
+
+	saved_errno = socket_errno();
+	buf = lib_getbuf();
+	prefix_bits = sockaddr_masktoprefixlen(mask);
+	if (prefix_bits < 0) {
+		snprintf(buf, LIB_BUFLENGTH, "%s mask %s",
+			 socktoa(addr), socktoa(mask));
+	} else {
+		snprintf(buf, LIB_BUFLENGTH, "%s/%d",
+			 socktoa(addr), prefix_bits);
+	}
 	errno = saved_errno;
 
 	return buf;
@@ -157,8 +193,7 @@ sockaddr_masktoprefixlen(
 	int		rc;
 
 	ZERO(isc_sa);
-	memcpy(&isc_sa.type, psa,
-	       min(sizeof(isc_sa.type), sizeof(*psa)));
+	memcpy(&isc_sa.type, psa, min(sizeof(isc_sa.type), sizeof(*psa)));
 	isc_netaddr_fromsockaddr(&isc_na, &isc_sa);
 	result = isc_netaddr_masktoprefixlen(&isc_na, &pfxlen);
 	rc = (ISC_R_SUCCESS == result)

@@ -175,31 +175,38 @@ typedef struct endpt_tag endpt;
 struct endpt_tag {
 	endpt *		elink;		/* endpt list link */
 	endpt *		mclink;		/* per-AF_* multicast list */
-	void *		ioreg_ctx;	/* IO registration context */
+	struct peer *	peers;		/* list of peers using endpt */
+#    ifdef SYS_WINNT
+	void *		ioreg_ctx;	/* IoHndPad_T * registration */
+#    endif
 	SOCKET		fd;		/* socket descriptor */
 	SOCKET		bfd;		/* for receiving broadcasts */
-	u_int32		ifnum;		/* endpt instance count */
+	char		name[32];	/* name of interface */
 	sockaddr_u	sin;		/* unicast address */
 	sockaddr_u	mask;		/* subnet mask */
 	sockaddr_u	bcast;		/* broadcast address */
-	char		name[32];	/* name of interface */
+	u_int32		ifnum;		/* endpt instance count */
 	u_short		family;		/* AF_INET/AF_INET6 */
 	u_short		phase;		/* phase in update cycle */
 	u_int32		flags;		/* INT_ flags */
-	int		last_ttl;	/* last TTL specified */
 	u_int32		addr_refid;	/* IPv4 addr or IPv6 hash */
 #    ifdef WORDS_BIGENDIAN
 	u_int32		old_refid;	/* byte-swapped IPv6 refid */
 #    endif
+	int		last_ttl;	/* last TTL specified */
 	int		num_mcast;	/* mcast addrs enabled */
 	u_long		starttime;	/* current_time at creation */
 	volatile long	received;	/* number of incoming packets */
 	long		sent;		/* number of outgoing packets */
 	long		notsent;	/* number of send failures */
 	u_int		ifindex;	/* for IPV6_MULTICAST_IF */
-	isc_boolean_t	ignore_packets; /* listen-read-drop this? */
-	struct peer *	peers;		/* list of peers using endpt */
-	u_int		peercnt;	/* count of same */
+	u_short		peercnt;	/* count of same */
+	u_char		kern_ts_fail;	/* receive ts missing since last */
+	u_char		kern_ts_seen;	/* receive ts since last fail */
+	u_short		kern_ts_once;	/* receive ts ever worked */
+	u_short		ignore_packets : 1; /* read & drop? */
+	u_short		mc_loop_off : 1;/* multicast loopback */
+	u_short		kern_ts_enab : 1;/* receive timestamp enabled */
 };
 
 /*
@@ -271,7 +278,6 @@ struct peer {
 	struct peer *ilink;	/* list of peers for interface */
 	sockaddr_u srcadr;	/* address of remote host */
 	char *	hostname;	/* if non-NULL, remote name */
-	char* fqdn;	/* if non-NULL, remote name */
 	struct addrinfo *addrs;	/* hostname query result */
 	struct addrinfo *ai;	/* position within addrs */
 	endpt *	dstadr;		/* local address */
@@ -287,7 +293,8 @@ struct peer {
 	u_char	num_events;	/* number of error events */
 	u_int32	ttl;		/* ttl/refclock mode */
 	char	*ident;		/* group identifier name */
-	//NTS-struct addon
+		//NTS-struct addon
+	char* fqdn;	/* if non-NULL, remote name */
 	u_char nts_state;          /* OFF / KE_PENDING / READY / FAILED */
 	u_short nts_ke_port;       /* usually 4460 */
 	void* nts_ctx;             /* your TLS/KE/session object */
@@ -578,15 +585,13 @@ struct pkt {
 #define	LEN_PKT_NOMAC	(12 * sizeof(u_int32))	/* min header length */
 #define	MIN_MAC_LEN	(1 * sizeof(u_int32))	/* crypto_NAK */
 #define	MD5_LENGTH	16
-#define	SHAKE128_LENGTH	16
 #define	CMAC_LENGTH	16
 #define	SHA1_LENGTH	20
-#define	KEY_MAC_LEN	sizeof(u_int32)		/* key ID in MAC */
+#define	KEY_MAC_LEN	(sizeof(u_int32))	/* key ID in MAC */
 #define	MAX_MD5_LEN	(KEY_MAC_LEN + MD5_LENGTH)
-#define	MAX_SHAKE128_LEN (KEY_MAC_LEN + SHAKE128_LENGTH)
 #define	MAX_SHA1_LEN	(KEY_MAC_LEN + SHA1_LENGTH)
 #define	MAX_MAC_LEN	(6 * sizeof(u_int32))	/* any MAC */
-#define	MAX_MDG_LEN	(MAX_MAC_LEN-KEY_MAC_LEN) /* max. digest len */
+#define	MAX_MDG_LEN	(MAX_MAC_LEN - KEY_MAC_LEN) /* max digest len */
 
 	/*
 	 * The length of the packet less MAC must be a multiple of 64
@@ -720,14 +725,6 @@ struct pkt {
 #define	NTP_HASH_MASK		(NTP_HASH_SIZE-1)
 #define	NTP_HASH_ADDR(src)	(sock_hash(src) & NTP_HASH_MASK)
 
-/*
- * min, min3 and max.  Makes it easier to transliterate the spec without
- * thinking about it.
- */
-#define	min(a,b)	(((a) < (b)) ? (a) : (b))
-#define	max(a,b)	(((a) > (b)) ? (a) : (b))
-#define	min3(a,b,c)	min(min((a),(b)), (c))
-
 /* clamp a value within a range */
 #define CLAMP(val, minval, maxval)				\
 			max((minval), min((val), (maxval)))
@@ -853,8 +850,13 @@ struct mon_data {
 #define MON_OFF		0x00		/* no monitoring */
 #define MON_ON		0x01		/* monitoring explicitly enabled */
 #define MON_RES		0x02		/* implicit monitoring for RES_LIMITED */
+
 /*
- * Structure used for restrictlist entries
+ * Structure used for restrictlist entries.  We allocate arrays of entries
+ * with manual size calculations to save space and locality for the shorter
+ * IPv4 addresses.  To avoid misaligned access to the link pointer at the
+ * start of restrict_u, we round up the size of the array allocations to a
+ * multiple of the size of a pointer.
  */
 typedef struct res_addr4_tag {
 	u_int32		addr;		/* IPv4 addr (host order) */
@@ -864,6 +866,7 @@ typedef struct res_addr4_tag {
 typedef struct res_addr6_tag {
 	struct in6_addr addr;		/* IPv6 addr (net order) */
 	struct in6_addr mask;		/* IPv6 mask (net order) */
+	u_int32		scope;		/* link-local scope ID */
 } res_addr6;
 
 typedef struct restrict_u_tag	restrict_u;
@@ -879,10 +882,12 @@ struct restrict_u_tag {
 		res_addr6 v6;
 	} u;
 };
-#define	V4_SIZEOF_RESTRICT_U	ALIGNED_SIZE(  offsetof(restrict_u, u)	\
-					     + sizeof(res_addr4))
-#define	V6_SIZEOF_RESTRICT_U	ALIGNED_SIZE(  offsetof(restrict_u, u)	\
-					     + sizeof(res_addr6))
+#define	V4_SIZEOF_RESTRICT_U	ROUNDUP_SIZE(sizeof(restrict_u *),	\
+					     (  sizeof(restrict_u)	\
+					      - sizeof(res_addr6)	\
+					      + sizeof(res_addr4)))
+#define	V6_SIZEOF_RESTRICT_U	ROUNDUP_SIZE(sizeof(restrict_u *),	\
+					     sizeof(restrict_u))
 
 /* restrictions for (4) a given address */
 typedef struct r4addr_tag	r4addr;
@@ -973,9 +978,24 @@ struct endpoint {
 /* similar datagrams per response limit for ntpd */
 #define MRU_FRAGS_LIMIT	128
 
-/* found on POSIX systems in sysexit.h */
+/* In case 'sysexits.h' is unavailable, define some exit codes here: */
+#ifndef EX_OK
+# define EX_OK		0	/* successful termination */
+#endif
 #ifndef EX_SOFTWARE
 # define EX_SOFTWARE	70	/* internal software error */
+#endif
+#ifndef EX_OSERR
+# define EX_OSERR	71	/* system error (e.g., can't fork) */
+#endif
+#ifndef EX_IOERR
+# define EX_IOERR	74	/* input/output error */
+#endif
+#ifndef EX_PROTOCOL
+# define EX_PROTOCOL	76	/* remote error in protocol */
+#endif
+#ifndef EX_NOPERM
+# define EX_NOPERM	77	/* permission denied */
 #endif
 
 #define BYTESWAP32(u32)							\

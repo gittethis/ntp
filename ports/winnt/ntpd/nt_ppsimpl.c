@@ -691,7 +691,7 @@ time_pps_getcap(
 	if (NULL == pmode)
 		return set_pps_errno(EFAULT);
 	/* Copy out capabilities */
-		*pmode = punit->provider->caps;
+	*pmode = punit->provider->caps;
 	return 0;
 }
 

@@ -40,11 +40,12 @@
 #ifdef DEBUG
 # define DPRINTF(lvl, arg)				\
 	do { 						\
-		if (debug >= (lvl))			\
+		if (debug >= (lvl)) {			\
 			mprintf arg;			\
-	} while (0)
+		}					\
+	} while (FALSE)
 #else
-# define DPRINTF(lvl, arg)	do {} while (0)
+# define DPRINTF(lvl, arg)	do {} while (FALSE)
 #endif
 
 /* clear bitflag only on DEBUG builds */
@@ -65,11 +66,12 @@ extern	void	win_time_stepped(void);
 #endif
 
 /* ntp_config.c */
-#define	TAI_1972	10	/* initial TAI offset (s) */
-extern	char	*keysdir;	/* crypto keys and leaptable directory */
+extern	char *	keysdir;	/* crypto keys and leaptable directory */
 extern	char *	saveconfigdir;	/* ntpq saveconfig output directory */
 
 extern	void	getconfig	(int, char **);
+
+/* ntp_control.c */
 extern	void	ctl_clr_stats	(void);
 extern	int	ctlclrtrap	(sockaddr_u *, endpt *, int);
 extern	u_short ctlpeerstatus	(struct peer *);
@@ -81,7 +83,6 @@ extern	void	report_event	(int, struct peer *, const char *);
 extern	int	mprintf_event	(int evcode, struct peer *p,
 				 const char *fmt, ...) NTP_PRINTF(3, 4);
 
-/* ntp_control.c */
 /*
  * Structure for translation tables between internal system
  * variable indices and text format.
@@ -126,7 +127,6 @@ extern	endpt *	select_peerinterface	(struct peer *, sockaddr_u *,
 extern	endpt *	findinterface		(sockaddr_u *);
 extern	endpt *	findbcastinter		(sockaddr_u *);
 extern	void	enable_broadcast	(endpt *, sockaddr_u *);
-extern	void	enable_multicast_if	(endpt *, sockaddr_u *);
 extern	void	interface_update	(interface_receiver_t, void *);
 #ifndef HAVE_IO_COMPLETION_PORT
 extern	void	io_handler		(void);
@@ -162,7 +162,18 @@ extern const char * localaddrtoa(endpt *);
 #ifdef DEBUG
 extern const char * iflags_str(u_int32 iflags);
 #endif
+extern	void	mcast_loopback_off(endpt* ep);
+inline void disable_mcast_loopback(endpt * ep)
+{
+	if (!ep->mc_loop_off) {
+		ep->mc_loop_off = TRUE;
+		mcast_loopback_off(ep);
+	}
+}
 
+/* ntp_leapsec.c */
+extern	void	check_leap_expiration(const char *fname, int is_daily_check,
+				      uint32_t ntptime, const time_t *systime);
 
 /* ntp_loopfilter.c */
 extern	void	init_loopfilter(void);
@@ -201,7 +212,7 @@ extern	void	peer_clr_stats	(void);
 extern	struct peer *peer_config(sockaddr_u *, const char *, endpt *,
 				 int, u_char, u_char, u_char, u_char,
 				 u_int, u_int32,
-				 keyid_t, const char*, const char *);
+				 keyid_t, const char *, const char*);
 extern	void	peer_reset	(struct peer *);
 extern	void	refresh_all_peerinterfaces(void);
 extern	void	unpeer		(struct peer *);
@@ -240,12 +251,6 @@ extern struct value tai_leap;
 /* ntp_proto.c */
 extern	void	transmit	(struct peer *);
 extern	void	receive 	(struct recvbuf *);
-//NTS-addon-start
-extern void		nts_ke_kick(struct peer*);
-extern void		nts_peer_xmit(struct peer*);
-extern int nts_packet_verify(struct peer* peer,struct recvbuf* rbufp,int has_mac);
-extern int nts_run_peer_sync(struct peer* peer);
-//NTS-addon-end
 extern	void	peer_clear	(struct peer *, const char *);
 extern	void 	process_packet	(struct peer *, struct pkt *, u_int);
 extern	void	clock_select	(void);
@@ -330,13 +335,20 @@ extern	void	record_raw_stats (sockaddr_u *srcadr, sockaddr_u *dstadr,
 				  int stratum, int ppoll, int precision,
 				  double root_delay, double root_dispersion,
 				  u_int32 refid, int len, u_char *extra);
-extern	void	check_leap_file	(int is_daily_check, u_int32 ntptime, const time_t * systime);
 extern	void	record_crypto_stats (sockaddr_u *, const char *);
 #ifdef DEBUG
 extern	void	record_timing_stats (const char *);
 extern	void	append_flagstr(char *flagstr, size_t sz, const char *text);
 #endif
 extern	char *	fstostr(time_t);	/* NTP timescale seconds */
+extern	void	check_leap_file(int is_daily_check, u_int32 ntptime,
+				const time_t *systime);
+#if defined(_MSC_VER) && defined (_DEBUG)
+# define debug_check_heap()	_CrtCheckMemory()
+#else
+# define debug_check_heap()	do {} while (FALSE)
+#endif
+
 
 /* ntpd.c */
 extern	void	parse_cmdline_opts(int *, char ***);

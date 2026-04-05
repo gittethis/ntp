@@ -52,16 +52,15 @@ dolfptoa(
 	 * Done that, now deal with the problem of the fraction.  First
 	 * determine the number of decimal places.
 	 */
-	dec = ndec;
-	if (dec < 0)
-		dec = 0;
+	dec = max(0, ndec);	/* Could be INSIST(ndec >= 0) */
 	if (msec) {
+		/* output milliseconds not seconds */
 		dec   += 3;
 		cpdec += 3;
 	}
-	if ((size_t)dec > sizeof(cbuf) - (cpend - cbuf))
+	if ((size_t)dec > sizeof(cbuf) - (cpend - cbuf)) {
 		dec = (int)(sizeof(cbuf) - (cpend - cbuf));
-	
+	}
 	/*
 	 * If there's a fraction to deal with, do so.
 	 */
@@ -135,10 +134,11 @@ dolfptoa(
 
 
 char *
-mfptoa(
-	u_int32	fpi,
-	u_int32	fpf,
-	short	ndec
+domfptoa(
+	u_int32		fpi,
+	u_int32		fpf,
+	short		ndec,
+	int/*BOOL*/	msec
 	)
 {
 	int	isneg;
@@ -148,25 +148,7 @@ mfptoa(
 		M_NEG(fpi, fpf);
 	}
 
-	return dolfptoa(fpi, fpf, (isneg?'-':'+'), ndec, FALSE);
+	return dolfptoa(fpi, fpf, isneg ? '-' : '+', ndec, msec);
 }
 
-
-char *
-mfptoms(
-	u_int32	fpi,
-	u_int32	fpf,
-	short	ndec
-	)
-{
-	int	isneg;
-
-	isneg = M_ISNEG(fpi);
-	if (isneg) {
-		M_NEG(fpi, fpf);
-	}
-
-	return dolfptoa(fpi, fpf, (isneg?'-':'+'), ndec, TRUE);
-}
-
-
+/* dolfptoa.c */

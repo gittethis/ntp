@@ -230,9 +230,10 @@ get_systime(
 	result = tspec_stamp_to_lfp(ts);
 
 	/*
-	 * Add in the fuzz. 'ntp_random()' returns [0..2**31-1] so we
-	 * must scale up the result by 2.0 to cover the full fractional
-	 * range.
+	 * Add in the fuzz.  sys_fuzz represents the minimum change between
+	 * get_ostime() readings.  Multiplying by ntp_uurandom() results
+	 * in uniformly distributed noise between 0 and sys_fuzz while not
+	 * risking a Lamport violation.
 	 */
 	dfuzz = ntp_uurandom() * sys_fuzz;
 	DTOLFP(dfuzz, &lfpfuzz);

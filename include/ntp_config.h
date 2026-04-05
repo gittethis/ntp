@@ -86,7 +86,7 @@ typedef struct address_node_tag address_node;
 struct address_node_tag {
 	address_node *	link;
 	char *		address;
-	u_short		type;	/* family, AF_UNSPEC (0), AF_INET[6] */
+	u_short		type;	/* family, AF_UNSPEC, AF_INET[6] */
 };
 
 typedef DECL_FIFO_ANCHOR(address_node) address_fifo;
@@ -115,7 +115,6 @@ struct restrict_node_tag {
 	attr_val_fifo *	flag_tok_fifo;
 	int/*BOOL*/	remove;
 	int		line_no;
-	int		column;
 	short		ippeerlimit;
 	short		srvfuzrft;
 };
@@ -182,9 +181,10 @@ typedef DECL_FIFO_ANCHOR(setvar_node) setvar_fifo;
 typedef struct nic_rule_node_tag nic_rule_node;
 struct nic_rule_node_tag {
 	nic_rule_node *	link;
+	int		keyword;
 	int		match_class;
-	char *		if_name;	/* or numeric address */
 	int		action;
+	char *		if_name;	/* or numeric address */
 };
 
 typedef DECL_FIFO_ANCHOR(nic_rule_node) nic_rule_fifo;
@@ -324,16 +324,15 @@ restrict_node *create_restrict_node(address_node *	addr,
 				    short		ippeerlimit,
 				    attr_val_fifo *	flag_tok_fifo,
 				    int/*BOOL*/		remove,
-				    int			nline,
-				    int			ncol);
+				    int			line_no);
 int_node *create_int_node(int val);
 addr_opts_node *create_addr_opts_node(address_node *addr,
 				      attr_val_fifo *options);
 sim_node *create_sim_node(attr_val_fifo *init_opts,
 			  server_info_fifo *servers);
 setvar_node *create_setvar_node(char *var, char *val, int isdefault);
-nic_rule_node *create_nic_rule_node(int match_class, char *if_name,
-				    int action);
+nic_rule_node *create_nic_rule_node(int keyword, int match_class,
+				    char *if_name, int action);
 
 script_info *create_sim_script_info(double duration,
 				    attr_val_fifo *script_queue);

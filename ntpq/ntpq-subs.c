@@ -284,7 +284,6 @@ struct varlist {
 extern int showhostnames;
 extern int wideremote;
 extern int rawmode;
-extern struct servent *server_entry;
 extern struct association *assoc_cache;
 extern u_char pktversion;
 
@@ -353,8 +352,6 @@ static int	qcmp_mru_addr(const void *, const void *);
 static int	qcmp_mru_r_addr(const void *, const void *);
 static int	qcmp_mru_count(const void *, const void *);
 static int	qcmp_mru_r_count(const void *, const void *);
-static void	validate_ifnum(FILE *, u_int, int *, ifstats_row *);
-static void	another_ifstats_field(int *, ifstats_row *, FILE *);
 static void	collect_display_vdc(associd_t as, vdc *table,
 				    int decodestatus, FILE *fp);
 
@@ -367,9 +364,9 @@ static	int	xputc(int, FILE *);
  */
 static u_int	mru_count;
 static u_int	mru_dupes;
-volatile int	mrulist_interrupted;
 static mru	mru_list;		/* listhead */
 static mru **	hash_table;
+volatile NTP_ATOMIC bool mrulist_interrupted;
 
 /*
  * qsort comparison function table for mrulist().  The first two
@@ -3365,7 +3362,7 @@ cleanup_return:
  *
  * Ensures rows are received in order and complete.
  */
-static void
+static bool
 validate_ifnum(
 	FILE *		fp,
 	u_int		ifnum,
@@ -3373,20 +3370,29 @@ validate_ifnum(
 	ifstats_row *	prow
 	)
 {
-	if (prow->ifnum == ifnum)
-		return;
+	/* If it's another field in the same row, all's well. */
+	if (prow->ifnum == ifnum) {
+		return TRUE;
+	}
+	/*
+	 * The first ifnum seen may not be zero.  In that case prow->ifnum
+	 * is zero, and ifnum is 1 or more.
+	 */
 	if (prow->ifnum + 1 <= ifnum) {
-		if (*pfields < IFSTATS_FIELDS)
-			xprintf(fp, "Warning: incomplete row with %d (of %d) fields\n",
+		if (*pfields < IFSTATS_FIELDS && 0 != prow->ifnum) {
+			/* missing fields but new ifnum */
+			xprintf(fp, "Warning: skipping #%u with"
+				" %d (of %d) fields\n", prow->ifnum,
 				*pfields, IFSTATS_FIELDS);
+		}
 		*pfields = 0;
 		prow->ifnum = ifnum;
-		return;
+		return TRUE;
 	}
 	xprintf(stderr,
-		"received if index %u, have %d of %d fields for index %u, aborting.\n",
-		ifnum, *pfields, IFSTATS_FIELDS, prow->ifnum);
-	exit(1);
+		"ifstats received if #%u entry after #%u, malformed response.\n",
+		ifnum, prow->ifnum);
+	return FALSE;
 }
 
 
@@ -3481,9 +3487,9 @@ ifstats(
 	while (nextvar(&dsize, &datap, &tag, &val)) {
 		INSIST(tag && val);
 		if (debug > 1)
-		    xprintf(stderr, "nextvar gave: %s = %s\n", tag, val);
+			xprintf(stderr, "nextvar gave: %s = %s\n", tag, val);
 		comprende = FALSE;
-		switch(tag[0]) {
+		switch (tag[0]) {
 
 		case 'a':
 			if (1 == sscanf(tag, addr_fmt, &ui) &&
@@ -3563,15 +3569,18 @@ ifstats(
 
 		if (comprende) {
 			/* error out if rows out of order */
-			validate_ifnum(fp, ui, &fields, &row);
+			if (!validate_ifnum(fp, ui, &fields, &row)) {
+				fflush(fp);
+				return;
+			}
 			/* if the row is complete, print it */
 			another_ifstats_field(&fields, &row, fp);
 		}
 	}
-	if (fields != IFSTATS_FIELDS)
-		xprintf(fp, "Warning: incomplete row with %d (of %d) fields\n",
-			fields, IFSTATS_FIELDS);
-
+	if (fields != IFSTATS_FIELDS) {
+		xprintf(fp, "Warning: skipping #%u with %d (of %d) fields\n",
+			row.ifnum, fields, IFSTATS_FIELDS);
+	}
 	fflush(fp);
 }
 
@@ -3581,7 +3590,7 @@ ifstats(
  *
  * Ensures rows are received in order and complete.
  */
-static void
+static bool
 validate_reslist_idx(
 	FILE *		fp,
 	u_int		idx,
@@ -3589,20 +3598,25 @@ validate_reslist_idx(
 	reslist_row *	prow
 	)
 {
-	if (prow->idx == idx)
-		return;
+	/* If it's another field in the same row, all's well. */
+	if (prow->idx == idx) {
+		return TRUE;
+	}
+	/* index always starts with 0 and increments by 1 */
 	if (prow->idx + 1 == idx) {
-		if (*pfields < RESLIST_FIELDS)
-			xprintf(fp, "Warning: incomplete row with %d (of %d) fields",
+		if (*pfields < RESLIST_FIELDS) {
+			xprintf(fp, "Warning: skipping row %u with"
+				" %d (of %d) fields\n", prow->idx + 1,
 				*pfields, RESLIST_FIELDS);
+		}
 		*pfields = 0;
 		prow->idx = idx;
-		return;
+		return TRUE;
 	}
 	xprintf(stderr,
-		"received reslist index %u, have %d of %d fields for index %u, aborting.\n",
-		idx, *pfields, RESLIST_FIELDS, prow->idx);
-	exit(1);
+		"reslist received #%u entry after #%u, malformed response.\n",
+		idx, prow->idx);
+	return FALSE;
 }
 
 
@@ -3735,15 +3749,18 @@ reslist(
 
 		if (comprende) {
 			/* error out if rows out of order */
-			validate_reslist_idx(fp, ui, &fields, &row);
+			if (!validate_reslist_idx(fp, ui, &fields, &row)) {
+				fflush(fp);
+				return;
+			}
 			/* if the row is complete, print it */
 			another_reslist_field(&fields, &row, fp);
 		}
 	}
-	if (fields != RESLIST_FIELDS)
-		xprintf(fp, "Warning: incomplete row with %d (of %d) fields",
-			fields, RESLIST_FIELDS);
-
+	if (fields != RESLIST_FIELDS) {
+		xprintf(fp, "Warning: skipping #%u with %d (of %d) fields\n",
+			row.idx, fields, RESLIST_FIELDS);
+	}
 	fflush(fp);
 }
 

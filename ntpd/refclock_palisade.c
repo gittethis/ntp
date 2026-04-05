@@ -86,12 +86,13 @@ extern int async_write(int, const void *, unsigned int);
 #include "refclock_palisade.h"
 
 #ifdef DEBUG
-const char * Tracking_Status[15][15] = { 
-	{ "Doing Fixes\0" }, { "Good 1SV\0" }, { "Approx. 1SV\0" },
-	{"Need Time\0" }, { "Need INIT\0" }, { "PDOP too High\0" },
-	{ "Bad 1SV\0" }, { "0SV Usable\0" }, { "1SV Usable\0" },
-	{ "2SV Usable\0" }, { "3SV Usable\0" }, { "No Integrity\0" },
-	{ "Diff Corr\0" }, { "Overdet Clock\0" }, { "Invalid\0" } };
+const char * Tracking_Status[15] = { 
+	"Doing Fixes",		"Good 1SV",		"Approx. 1SV",
+	"Need Time",		"Need INIT",		"PDOP too High",
+	"Bad 1SV",		"0SV Usable",		"1SV Usable",
+	"2SV Usable",		"3SV Usable",		"No Integrity",
+	"Diff Corr",		"Overdet Clock",	"Invalid"
+};
 #endif
 
 /*
@@ -526,7 +527,7 @@ decode_date(
 	pp->year = jd.year;	
 	return ((int)jd.month << 5) | jd.monthday;
 }
-    
+
 
 /* 
  * TSIP_decode - decode the TSIP data packets 
@@ -678,12 +679,19 @@ TSIP_decode (
 				
 			/* Check Tracking Status */
 			st = mb(18);
-			if (st < 0 || st > 14)
-				st = 14;
 			if ((st >= 2 && st <= 7) || st == 11 || st == 12) {
 #ifdef DEBUG
+				/*
+				 * If tracking status st is outside 0-14 range
+				 * of Tracking_Status[] array, force to 14
+				 * which is "Invalid".
+				 */
+				st = min(st, COUNTOF(Tracking_Status) - 1);
+				if (st < 0) {
+					st = COUNTOF(Tracking_Status) - 1;
+				}
 				printf("TSIP_decode: Not Tracking Sats : %s\n",
-				       *Tracking_Status[st]);
+				       Tracking_Status[st]);
 #endif
 				refclock_report(peer, CEVNT_BADTIME);
 				up->polled = -1;
@@ -732,7 +740,7 @@ TSIP_decode (
 				printf("TSIP_decode: unit %d: %02X #%d %02d:%02d:%02d.%09ld %02d/%02d/%04d UTC %02x %s\n",
 				       up->unit, mb(0) & 0xff, event, pp->hour, pp->minute, 
 				       pp->second, pp->nsec, (mmday >> 5), (mmday & 31), pp->year,
-				       mb(19), *Tracking_Status[st]);
+				       mb(19), Tracking_Status[st]);
 #endif
 			return 1;
 			break;

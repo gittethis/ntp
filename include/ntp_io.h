@@ -5,7 +5,7 @@
 
 /*
  * POSIX says use <fnct.h> to get O_* symbols and 
- * SEEK_SET symbol form <unistd.h>.
+ * SEEK_SET symbol from <unistd.h>.
  */
 #include <sys/types.h>
 #ifdef HAVE_UNISTD_H
@@ -89,10 +89,16 @@ extern void	sau_from_netaddr(sockaddr_u *, const isc_netaddr_t *);
 extern void	add_nic_rule(nic_rule_match match_type,
 			     const char *if_name, int prefixlen,
 			     nic_rule_action action);
-#ifndef HAVE_IO_COMPLETION_PORT
+#ifndef SYS_WINNT
 extern	void	maintain_activefds(int fd, int closing);
+# define	ntpd_sendto(ep, pkt, len, dest)				\
+		(int)sendto(ep->fd, (void *)(pkt), min(INT_MAX, (len)),	\
+			    0 /* flags */, &(dest)->sa, SOCKLEN(dest))
 #else
-#define		maintain_activefds(f, c)	do {} while (0)
+# define	maintain_activefds(f, c)	do {} while (FALSE)
+# define	ntpd_sendto(ep, pkt, len, dest)				\
+		io_completion_port_sendto(ep, (void *)(pkt),		\
+					  min(INT_MAX, (len)), dest)
 #endif
 
 

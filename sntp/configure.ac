@@ -33,7 +33,7 @@ AC_LANG([C])
 # the date YYYYMMDD optionally with -HHMM if there is more than one
 # bump in a day.
 
-sntp_configure_cache_version=20240617
+sntp_configure_cache_version=20250602
 
 # When the version of config.cache and configure do not
 # match, NTP_CACHEVERSION will flush the cache.
@@ -118,8 +118,6 @@ NTP_SYSEXITS_H
 NTP_FACILITYNAMES
 
 # Checks for typedefs, structures, and compiler characteristics.
-AC_HEADER_STDBOOL
-
 NTP_IPV6
 
 ###

@@ -11,6 +11,7 @@
 
 #include <stdlib.h>
 #include <Windows.h>
+#include <mswsock.h>
 #include "ntp.h"
 
 /* ---------------------------------------------------------------------
@@ -113,10 +114,10 @@ typedef void(*IoCompleteFunc)(ULONG_PTR, IoCtx_t *);
 
 #ifdef _MSC_VER
 # pragma warning(push)
-# pragma warning(disable : 201)		/* nonstd extension nameless union */
+# pragma warning(disable : 201)	/* non-std ext nameless union, std in C11, C++	*/
 #endif
 struct IoCtx {
-	OVERLAPPED		ol;		/* 'kernel' part of the context	*/
+	OVERLAPPED		ol;		/* should be first member	*/
 	union {
 		recvbuf_t *	recv_buf;	/* incoming -> buffer structure	*/
 		void *		trans_buf;	/* outgoing -> char array	*/
@@ -131,9 +132,7 @@ struct IoCtx {
 	IoHndPad_T *		iopad;
 	DevCtx_t *		devCtx;
 	DWORD			errCode;	/* error code of last I/O	*/
-	DWORD			byteCount;	/* byte count     "             */
-	DWORD			ioFlags;	/* in/out flags for recvfrom()	*/
-	u_int			flRawMem : 1;	/* buffer is raw memory -> free */
+	DWORD			byteCount;	/* byte count	"		*/
 	struct {
 		l_fp		DCDSTime;	/* PPS-hack: time of DCD ON	*/
 		l_fp		FlagTime;	/* time stamp of flag/event char*/
@@ -142,6 +141,7 @@ struct IoCtx {
 		u_int		flTsDCDS : 1;	/* DCDSTime valid?		*/
 		u_int		flTsFlag : 1;	/* FlagTime valid?		*/
 	} aux;
+	u_int			flRawMem : 1;	/* buffer is raw memory -> free */
 };
 #ifdef _MSC_VER
 # pragma warning(pop)
@@ -153,6 +153,6 @@ extern IoCtx_t* __fastcall IoCtxAlloc(IoHndPad_T*, DevCtx_t*);
 extern void	__fastcall IoCtxFree(IoCtx_t*);
 extern void	__fastcall IoCtxRelease(IoCtx_t*);
 
-extern BOOL	IoCtxStartChecked(IoCtx_t*, IoCtxStarterT, recvbuf_t*);
+extern BOOL	__fastcall IoCtxStartChecked(IoCtx_t *, IoCtxStarterT);
 
-#endif /*!defined(NTP_IOCPLTYPES_H)*/
+#endif	/* !defined(NTP_IOCPLTYPES_H) */

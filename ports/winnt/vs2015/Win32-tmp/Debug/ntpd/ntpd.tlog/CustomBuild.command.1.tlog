@@ -1,0 +1,6 @@
+^D:\NTP-STABLE-DLH-260328\NTPD\NTP_PARSER.H
+call .\gen-ntp_keyword D:\ntp-stable-dlh-260328\ports\winnt\vs2015\\Win32-tmp\Debug
+^D:\NTP-STABLE-DLH-260328\SNTP\SCM-REV
+call ..\..\scripts\mkver.bat -U scm-rev
+^D:\NTP-STABLE-DLH-260328\PORTS\WINNT\VS2015\NTPD\SCM-REV
+call ..\..\scripts\mkver.bat -S scm-rev -P ntpd

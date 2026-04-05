@@ -36,7 +36,7 @@
 #define ISC_PLATFORM_HAVESCOPEID
 #endif
 #define ISC_PLATFORM_NEEDPORTT
-#undef MSG_TRUNC
+/* #undef MSG_TRUNC */		/* NOTE: change in NTP's version of libisc */
 #define ISC_PLATFORM_NEEDNTOP
 #define ISC_PLATFORM_NEEDPTON
 

@@ -1,5 +1,11 @@
 /*
- * ntp_request.c - respond to information requests
+ * ntp_request.c - respond to mode 7 (ntpdc) information requests
+ * 
+ * NOTE:  By default, ntpd does not respond to mode 7 requests, as the
+ *	  intent is to provide all ntpdc capabilities via ntpq mode 6.
+ *	  To use mode 7, you must include "enable mode7" in ntp.conf.
+ *	  Do so at your own risk.  The mode 7 protocol is binary on
+ *	  the wire, where mode 6 is text only.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -387,18 +393,6 @@ flush_pkt(void)
 			RESP_HEADER_SIZE+databytes);
 		numresppkts++;
 	}
-}
-
-
-
-/*
- * Given a buffer, return the packet mode
- */
-int
-get_packet_mode(struct recvbuf *rbufp)
-{
-	struct req_pkt *inpkt = (struct req_pkt *)&rbufp->recv_pkt;
-	return (INFO_MODE(inpkt->rm_vn_mode));
 }
 
 

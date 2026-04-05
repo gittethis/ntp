@@ -67,6 +67,7 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <CustomBuild Include="..\..\..\..\sntp\scm-rev" />
     <CustomBuild Include="scm-rev" />
   </ItemGroup>
 </Project>

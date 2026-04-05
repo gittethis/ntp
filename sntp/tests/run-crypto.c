@@ -30,21 +30,23 @@
 //=======External Functions This Runner Calls=====
 extern void setUp(void);
 extern void tearDown(void);
-extern void test_MakeSHAKE128Mac(void);
+extern void test_MakeSHA256Mac(void);
 extern void test_MakeSHA1Mac(void);
 extern void test_MakeCMac(void);
-extern void test_VerifySHAKE128(void);
 extern void test_VerifySHA1(void);
-extern void test_VerifyCMAC(void);
+extern void test_VerifySHA256(void);
 extern void test_VerifyFailure(void);
+extern void test_VerifyCMAC(void);
 extern void test_PacketSizeNotMultipleOfFourBytes(void);
 
 
 //=======Suite Setup=====
 static void suite_setup(void)
 {
+extern void init_lib(void);
 extern int change_iobufs(int);
 extern int change_logfile(const char*, int);
+init_lib();
 change_iobufs(1);
 change_logfile("stderr", 0);
 }
@@ -66,14 +68,14 @@ int main(int argc, char *argv[])
   progname = argv[0];
   suite_setup();
   UnityBegin("crypto.c");
-  RUN_TEST(test_MakeSHAKE128Mac, 14);
-  RUN_TEST(test_MakeSHA1Mac, 15);
-  RUN_TEST(test_MakeCMac, 16);
-  RUN_TEST(test_VerifySHAKE128, 17);
-  RUN_TEST(test_VerifySHA1, 18);
-  RUN_TEST(test_VerifyCMAC, 19);
-  RUN_TEST(test_VerifyFailure, 20);
-  RUN_TEST(test_PacketSizeNotMultipleOfFourBytes, 21);
+  RUN_TEST(test_MakeSHA256Mac, 12);
+  RUN_TEST(test_MakeSHA1Mac, 13);
+  RUN_TEST(test_MakeCMac, 14);
+  RUN_TEST(test_VerifySHA1, 15);
+  RUN_TEST(test_VerifySHA256, 16);
+  RUN_TEST(test_VerifyFailure, 17);
+  RUN_TEST(test_VerifyCMAC, 18);
+  RUN_TEST(test_PacketSizeNotMultipleOfFourBytes, 19);
 
   return (UnityEnd());
 }

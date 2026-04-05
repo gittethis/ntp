@@ -266,11 +266,13 @@ typedef u_int32 u_fp;
  * term should be removed.
  * XSCALE also generates bad code for these, at least with GCC 3.3.5.
  * This is unrelated to math.h, but the same solution applies.
+ * DLH: I think some parentheses are missing around the SPARC and XSCALE
+ * tests, but I don't have access to either to to verify.
  */
 #if defined(HAVE_U_INT64) && \
     !(defined(__SVR4) && defined(__sun) && \
       defined(sparc) && defined(__GNUC__) || \
-      defined(__arm__) && defined(__XSCALE__) && defined(__GNUC__)) 
+      defined(__arm__) && defined(__XSCALE__) && defined(__GNUC__))
 
 #include <math.h>	/* ldexp() */
 
@@ -278,7 +280,7 @@ typedef u_int32 u_fp;
 	do {							\
 		double	d_tmp;					\
 		u_int64	q_tmp;					\
-		int	M_isneg;					\
+		int	M_isneg;				\
 								\
 		d_tmp = (d);					\
 		M_isneg = (d_tmp < 0.);				\
@@ -344,13 +346,15 @@ typedef u_int32 u_fp;
 /*
  * Prototypes
  */
-extern	char *	dofptoa		(u_fp, char, short, int);
-extern	char *	dolfptoa	(u_int32, u_int32, char, short, int);
-
+extern	char *	dofptoa		(u_fp fpv, char sign, short ndec, int msec);
+extern	char *	dolfptoa	(u_int32 fpi, u_int32 fpv, char sign, short ndec,
+				 int msec);
+extern	char *	domfptoa	(u_int32 fpi, u_int32 fpv, short ndec,
+				 int msec);
+extern	char *	mfptoms		(u_int32 fpi, u_int32 fpv, short ndec);
 extern	int	atolfp		(const char *, l_fp *);
 extern	int	buftvtots	(const char *, l_fp *);
-extern	char *	fptoa		(s_fp, short);
-extern	char *	fptoms		(s_fp, short);
+extern	char *	sfptoa		(s_fp sfp, short ndec, int msec);
 extern	int	hextolfp	(const char *, l_fp *);
 extern  void	gpstolfp	(u_int, u_int, unsigned long, l_fp *);
 extern	int	mstolfp		(const char *, l_fp *);
@@ -371,16 +375,23 @@ extern	struct tm * ntp2unix_tm (u_int32 ntp, int local);
 #define	lfptoa(fpv, ndec)	mfptoa((fpv)->l_ui, (fpv)->l_uf, (ndec))
 #define	lfptoms(fpv, ndec)	mfptoms((fpv)->l_ui, (fpv)->l_uf, (ndec))
 
+#define fptoa(sfp, ndec)	sfptoa(sfp, (ndec), FALSE)
+#define fptoms(sfp, ndec)	sfptoa(sfp, (ndec), TRUE)
+#define	ufptoa(fpv, ndec)	dofptoa((fpv), 0, (ndec), FALSE)
+#define	ufptoms(fpv, ndec)	dofptoa((fpv), 0, (ndec), TRUE)
+#define	ulfptoa(fpv, ndec)	dolfptoa((fpv)->l_ui, (fpv)->l_uf, 0, (ndec), \
+					 FALSE)
+#define	ulfptoms(fpv, ndec)	dolfptoa((fpv)->l_ui, (fpv)->l_uf, 0, (ndec), \
+					 TRUE)
+#define	umfptoa(fpi, fpf, ndec) dolfptoa((fpi), (fpf), 0, (ndec), FALSE)
+#define	mfptoa(fpi, fpf, ndec)	domfptoa(fpi, fpf, (ndec), FALSE)
+#define	mfptoms(fpi, fpf, ndec)	domfptoa(fpi, fpf, (ndec), TRUE)
+
 #define stoa(addr)		socktoa(addr)
 #define	ntoa(addr)		stoa(addr)
 #define sptoa(addr)		sockporttoa(addr)
+#define smtoa(addr, mask)	sockmasktoa(addr, mask)
 #define stohost(addr)		socktohost(addr)
-
-#define	ufptoa(fpv, ndec)	dofptoa((fpv), 0, (ndec), 0)
-#define	ufptoms(fpv, ndec)	dofptoa((fpv), 0, (ndec), 1)
-#define	ulfptoa(fpv, ndec)	dolfptoa((fpv)->l_ui, (fpv)->l_uf, 0, (ndec), 0)
-#define	ulfptoms(fpv, ndec)	dolfptoa((fpv)->l_ui, (fpv)->l_uf, 0, (ndec), 1)
-#define	umfptoa(fpi, fpf, ndec) dolfptoa((fpi), (fpf), 0, (ndec), 0)
 
 /*
  * Optional callback from libntp step_systime() to ntpd.  Optional

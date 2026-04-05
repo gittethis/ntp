@@ -105,6 +105,12 @@ struct addrinfo *copy_addrinfo_list_impl(const struct addrinfo *
 # define PF_INET6	AF_INET6
 #endif
 
+typedef uint8_t		ntp_u_int8_t;
+typedef uint16_t	ntp_u_int16_t;
+typedef uint32_t	ntp_u_int32_t;
+/* order doesn't matter for ntp_uint64_t, used only for alignment */
+typedef struct ntp_uint64_t { u_int32 val[2]; } ntp_uint64_t;
+
 #if !defined(_SS_MAXSIZE) && !defined(_SS_ALIGNSIZE)
 
 # define	_SS_MAXSIZE	128
@@ -123,6 +129,18 @@ struct addrinfo *copy_addrinfo_list_impl(const struct addrinfo *
 #ifndef INET6_ADDRSTRLEN
 # define	INET6_ADDRSTRLEN	46	/* max len of IPv6 addr in ascii */
 #endif
+
+/*
+ * characters in IPv6 addr with port and scope:
+ * 
+ * IPv4-mapped IPv6 address		45
+ * interface name as scope ID		16	(linux)
+ * square brackets [] if port is used	2
+ * colon				1
+ * port					5
+ * NUL					1
+ */
+#define	IP6_ADDR_STR_BUF		70
 
 /*
  * If we don't have the sockaddr_storage structure

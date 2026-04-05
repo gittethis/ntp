@@ -5,7 +5,6 @@
 #define LIB_STRBUF_H
 
 #include <ntp_types.h>
-#include <ntp_malloc.h>			/* for zero_mem() */
 
 #define	LIB_BUFLENGTH	128
 
@@ -22,7 +21,7 @@ extern	void	init_lib(void);
  * no need to churn the history with a mechanical switch away from
  * LIB_GETBUF(buf).
  */
-extern	char * lib_getbuf(void);
+extern	char *	lib_getbuf(void);
 
 #define	LIB_GETBUF(bufp)		\
 	do {				\

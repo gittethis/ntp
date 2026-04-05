@@ -48,6 +48,7 @@ main (int argc, char **argv) {
   int background = 0; /* start as background process */
   int use_syslog = 1; /* use syslog for logging */
 
+  init_lib();
 	{
 		int optct = optionProcess(&ntpsnmpdOptions, argc, argv);
 		argc -= optct;

@@ -14,9 +14,9 @@
 struct stat;
 
 
-/* function pointer types. Note that 'fprintf' and 'getc' can be casted
+/* function pointer types. Note that 'fprintf' and 'getc' can be cast
  * to the dumper resp. reader type, provided the auxiliary argument is a
- * valid FILE pointer in hat case.
+ * valid FILE pointer in that case.
  */
 typedef void (*leapsec_dumper)(void*, const char *fmt, ...);
 typedef int  (*leapsec_reader)(void*);
@@ -29,10 +29,10 @@ typedef struct leap_table leap_table_t;
  * the SHA1 hash and preprocessing as described in the NIST leapsecond
  * file.
  */
-#define LSVALID_GOODHASH	1	/* valid signature         */
-#define LSVALID_NOHASH		0	/* no signature in file    */
-#define LSVALID_BADHASH	       -1	/* signature mismatch      */
-#define LSVALID_BADFORMAT      -2	/* signature not parseable */
+#define LSVALID_GOODHASH	 1	/* valid signature         */
+#define LSVALID_NOHASH		 0	/* no signature in file    */
+#define LSVALID_BADHASH		-1	/* signature mismatch      */
+#define LSVALID_BADFORMAT	-2	/* signature not parseable */
 
 extern int leapsec_validate(leapsec_reader, void*);
 
@@ -105,7 +105,7 @@ typedef struct leap_result leap_result_t;
 
 /* The leap signature is used in two distinct circumstances, and it has
  * slightly different content in these cases:
- *  - it is used to indictae the time range covered by the leap second
+ *  - it is used to indicate the time range covered by the leap second
  *    table, and then it contains the last transition, TAI offset after
  *    the final transition, and the expiration time.
  *  - it is used to query data for AUTOKEY updates, and then it contains
@@ -147,7 +147,7 @@ typedef struct leap_smear_info leap_smear_info_t;
  * pointer will automatically copy the primary table, so it can be
  * subsequently modified.
  */
-extern leap_table_t *leapsec_get_table(int alternate);
+extern leap_table_t *leapsec_get_table(int/*BOOL*/ alternate);
 
 /* Set the current leap table. Accepts only return values from
  * 'leapsec_get_table()', so it's hard to do something wrong. Returns
@@ -156,25 +156,26 @@ extern leap_table_t *leapsec_get_table(int alternate);
 extern int/*BOOL*/ leapsec_set_table(leap_table_t *);
 
 /* Clear all leap second data. Use it for init & cleanup */
-extern void leapsec_clear(leap_table_t*);
+extern void leapsec_clear(leap_table_t *);
 
 /* Load a leap second file. If 'blimit' is set, do not store (but
  * register with their TAI offset) leap entries before the build date.
  * Update the leap signature data on the fly.
  */
-extern int/*BOOL*/ leapsec_load(leap_table_t*, leapsec_reader,
-				void*, int blimit);
+extern int/*BOOL*/ leapsec_load(leap_table_t *, leapsec_reader,
+				void *, int blimit);
 
 /* Dump the current leap table in readable format, using the provided
  * dump formatter function.
  */
-extern void leapsec_dump(const leap_table_t*, leapsec_dumper func, void *farg);
+extern void leapsec_dump(const leap_table_t *, leapsec_dumper func,
+			 void *farg);
 
 /* Read a leap second file from stream. This is a convenience wrapper
  * around the generic load function, 'leapsec_load()'.
  */
 extern int/*BOOL*/ leapsec_load_stream(FILE * fp, const char * fname,
-				       int/*BOOL*/logall, int/*BOOL*/vhash);
+				       int/*BOOL*/vhash);
 
 /* Read a leap second file from file. It checks that the file exists and
  * (if 'force' is not applied) the ctime/mtime has changed since the
@@ -184,7 +185,6 @@ extern int/*BOOL*/ leapsec_load_stream(FILE * fp, const char * fname,
  * otherwise. Uses 'leapsec_load_stream()' internally.
  */
 extern int/*BOOL*/ leapsec_load_file(const char * fname, struct stat * sb,
-				     int/*BOOL*/force, int/*BOOL*/logall,
 				     int/*BOOL*/vhash);
 
 /* Get the current leap data signature. This consists of the last

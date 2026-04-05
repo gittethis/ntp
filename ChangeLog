@@ -1,22 +1,48 @@
 ---
+* [Bug 4015] Fix build with glibc 2.43. <hart@ntp.org>
+* [Bug 4014] IPv6-only clients using 'pool' broken in 4.2.8p18.  Reported
+             by Paul Gear. <hart@ntp.org>
+* [Bug 4009] KoD RATE responses from other NTP implementations ignored.
+             Reported by Miroslav Lichvar. <hart@ntp.org>
+* [Bug 3998] Enable kernel UDP receive timestamps for ntpd on Windows.
+             <hart@ntp.org>
+* [Bug 3989] IPv6 SO_BINTIME timestamps unimplemented on FreeBSD pre-15.0.
+             <hart@ntp.org>
+* [Bug 3988] EVP_MD_do_all_sorted not found with OpenSSL 3.5.1 <hart@ntp.org>
+* [Bug 3987] "sntp -d" crashes with libevent >= 2.1.10, reported by
+             Reinhard Max. <hart@ntp.org>
+* [Bug 3982] read_network_packet with debugging on can lead to a deadlock.
+             Reported by Brian Utterback. <hart@ntp.org>
+* [Bug 3981] 4.2.8p17 -Werror build fails due to time_t/long mismatch for
+             stime(), -Wincompatible-pointer-types. <hart@ntp.org>
+* [Bug 3980] ntpd 4.2.8p18 "pidfile" in ntp.conf ignored.  Reported by
+             jadevree@mtu.edu.  <hart@ntp.org>
+* [Bug 3975] ntpd link-local restrict entries do not respect scope ID.
+             <hart@ntp.org>
+* [Bug 3974] Do not lie about stopping the kernel loop.  <hart@ntp.org>
+* [Bug 3972] ntpq -c ifstats "Warning: incomplete row with 0 (of 12) fields"
+             reported spuriously if interface 0 is gone. <hart@ntp.org>
+* [Bug 3971] ntpd step back rate-limits and KoDs all sources for step
+             duration. Found by kinsey.moore@oarcorp.com <hart@ntp.org>
+* [Bug 3967] ntpd 4.2.8p18 "Address already in use" error with shared IP on
+             multiple interfaces. <hart@ntp.org>
+* [Bug 3965] Avoid SHAKE128 in unit tests after OpenSSL 3.4 incompatible
+             change. <hart@ntp.org>
+* [Bug 3973] ntpq FIPS "help keytype" changes slow startup. <hart@ntp.org>
+* [Bug 3965] Avoid SHAKE128 in unit tests after OpenSSL 3.4 incompatible
+             change. <hart@ntp.org>
+* [Bug 3954] SHA256 is not working in NTP 4.2.8p18. <hart@ntp.org>
 * [Bug 3960] Remove duplicate ntp.conf.def content, reported by
              Ulrich Windl. <stenn@ntp.org>
-* Makefile.am: Another tweak to check-local.  <stenn@ntp.org>
-* cleanup github-specific files.  <stenn@ntp.org>
-* Add COPYRIGHT.md and LICENSE.md.  <stenn@ntp.org>
-* Makefile.am: Fix distcheck problem with check-local.  <stenn@ntp.org>
-* Add .github to the top-level tree. <dlavigne@nwtime.org>
-* build script: Use hostname.site for NTF build hosts.  Use the full
-  hostname for the buildkey.  <stenn@ntp.org>
-* flock-build: Try to use the full hostname for the buildkey.  <stenn@ntp.org>
-* Author attribution updates
-
----
-
+* [Bug 3958] 4.2.8p18 can't reach servers on an IPv6-Only host.
+             Reported by Cy Schubert on behalf of Dmitrij. <hart@ntp.org> 
+* [Bug 3954] SHA256 is not working in NTP 4.2.8p18. <hart@ntp.org>
 * [Bug 3943] 4.2.8p18 ignores link-local IPv6 server. <hart@ntp.org>
 * [Bug 3942] DECL_SYSCALL detection does not work on illumos. <hart@ntp.org>
-* [Bug 3940] ntpd 4.2.8p18 regression from p17 for digests longer than 160
-             bits. <hart@ntp.org>
+* [Bug 3940] Once again support symmetric auth using digests > 160 bits.
+             <hart@ntp.org>
+* [Bug 3934] ntp_facilitynames.m4 is broken and unused.
+             Fix bug in never-used configure script macro. <hart@ntp.org>
 * [Bug 3933] Restrict structure misaligned on SPARC64. <hart@ntp.org>
 * [Bug 3932] Ignore teredo interfaces in Windows ntpd. <hart@ntp.org>
 * [Bug 3931] Libopts is not respecting VPATH. <hart@ntp.org>
@@ -34,18 +60,50 @@
 * [Bug 3924] Windows ntpd gives up on DNS too quickly at OS startup.
              Increase max. DNS retry interval from 32 to 1024 seconds.
              <hart@ntp.org>
+* [Bug 3908] No reliable warning on failed hash verification on automatic
+             leapfile reload.  Reported by PoolMUC.  <hart@ntp.org>
 * [Bug 3877] 4.2.8p16 client rejects server response with zero ppoll.
              <hart@ntp.org>
-* Display SSL shared library version number in human form. <hart@ntp.org>          
+* [Bug 3779] plot_summary ignores --plot-term option. <metaed@gmail.com>
+* [Bug 3053] Frequency prediction algorithm precedence error. <hart@ntp.org>
+* Makefile.am: Another tweak to check-local.  <stenn@ntp.org>
+* cleanup github-specific files.  <stenn@ntp.org>
+* Add COPYRIGHT.md and LICENSE.md.  <stenn@ntp.org>
+* Makefile.am: Fix distcheck problem with check-local.  <stenn@ntp.org>
+* Add .github to the top-level tree. <dlavigne@nwtime.org>
+* build script: Use hostname.site for NTF build hosts.  Use the full
+  hostname for the buildkey.  <stenn@ntp.org>
+* flock-build: Try to use the full hostname for the buildkey.  <stenn@ntp.org>
+* Author attribution updates
+* Paranoid buffer safety improvement to normal_dtoa(). <hart@ntp.org>
+* Display SSL shared library version number in human form. <hart@ntp.org>
 * Reorder restrict_u layout to improve alignment on all platforms.
   <hart@ntp.org>
+* Improve ntpq's "help keytype" list of available digests twice.
+  1. Test each digest rather than assuming it will work if OpenSSL
+     enumerates it.  This deals with both deprecation and policy-
+     based exclusion, such as FIPS-hardened OpenSSL.
+  2. Include digests which produce more than 160 bits. <hart@ntp.org>
+* Add beefier digests algorithms to tests/libntp/digests.c, and rearrange
+  to pass if at least 1/3 of tested digests work.  Previously every
+  digest attempted had to work for "make check" success. <hart@ntp.org>
+* Report clk_jitter (variability in offsets) in nanoseconds for mode 6 
+  readvar ("ntpq -crv"). <hart@ntp.org>
 * Correct match_restrict[46]_addr() logic expiring temporary restrictions.
   <hart@ntp.org>
+* Support slash subnet notation in addition to subnet masks for "restrict"
+  statements in ntp.conf, e.g. 192.0.2.0/24  <hart@ntp.org>
+* IETF and NIST no longer publish leap seconds file, use IANA's in update-leap
+  script.  <hart@ntp.org>
 * Rename is_ip_address() to sau_from_string() to better reflect use.
   <hart@ntp.org>
 * Remove include/safecast.h <hart@ntp.org>
-* Fix bug in m4sh macro NTP_FACILITYNAMES that meant detection always failed.
+* Move AC_HEADER_STDBOOL from configure.ac files to ntp_libntp.m4.
   <hart@ntp.org>
+* Make our no stdbool.h implementation more like C99. <hart@ntp.org>
+* Use AC_CHECK_HEADERS_ONCE where practical for smaller/faster configure.
+  <hart@ntp.org>
+* Update the copyright year.  <stenn@ntp.org>
 
 ---
 (4.2.8p18) 2024/05/25 Released by Harlan Stenn <stenn@ntp.org>
@@ -993,13 +1051,13 @@
 * Phase 1 deprecation of google test in sntp/tests/.  Harlan Stenn.
 * On some versions of HP-UX, inttypes.h does not include stdint.h.  H.Stenn.
 * top_srcdir can change based on ntp v. sntp.  Harlan Stenn.
-* sntp/tests/ function parameter list cleanup.  Damir Tomić.
-* tests/libntp/ function parameter list cleanup.  Damir Tomić.
-* tests/ntpd/ function parameter list cleanup.  Damir Tomić.
+* sntp/tests/ function parameter list cleanup.  Damir Tomi?.
+* tests/libntp/ function parameter list cleanup.  Damir Tomi?.
+* tests/ntpd/ function parameter list cleanup.  Damir Tomi?.
 * sntp/unity/unity_config.h: handle stdint.h.  Harlan Stenn.
 * sntp/unity/unity_internals.h: handle *INTPTR_MAX on old Solaris.  H.Stenn.
-* tests/libntp/timevalops.c and timespecops.c fixed error printing.  D.Tomić.
-* tests/libntp/ improvements in code and fixed error printing.  Damir Tomić.
+* tests/libntp/timevalops.c and timespecops.c fixed error printing.  D.Tomi?.
+* tests/libntp/ improvements in code and fixed error printing.  Damir Tomi?.
 * tests/libntp: a_md5encrypt.c, authkeys.c, buftvtots.c, calendar.c, caljulian.c,
   caltontp.c, clocktime.c, humandate.c, hextolfp.c, decodenetnum.c - fixed
   formatting; first declaration, then code (C90); deleted unnecessary comments;
@@ -1070,11 +1128,11 @@ fixed formatting. Tomasz Flendrich
 * Changed progname to be const in many files - now it's consistent. Tomasz
   Flendrich
 * Typo fix for GCC warning suppression.  Harlan Stenn.
-* Added tests/ntpd/ntp_scanner.c test. Damir Tomić.
+* Added tests/ntpd/ntp_scanner.c test. Damir Tomi?.
 * Added declarations to all Unity tests, and did minor fixes to them.
-  Reduced the number of warnings by half. Damir Tomić.
+  Reduced the number of warnings by half. Damir Tomi?.
 * Updated generate_test_runner.rb and updated the sntp/unity/auto directory
-  with the latest Unity updates from Mark. Damir Tomić.
+  with the latest Unity updates from Mark. Damir Tomi?.
 * Retire google test - phase I.  Harlan Stenn.
 * Unity test cleanup: move declaration of 'initializing'.  Harlan Stenn.
 * Update the NEWS file.  Harlan Stenn.
@@ -1121,22 +1179,22 @@ fixed formatting. Tomasz Flendrich
 * sntp/tests/Makefile.am: remove g_nameresolution.cpp as it tested
   something that was only in the 4.2.6 sntp.  Harlan Stenn.
 * Modified tests/bug-2803/Makefile.am so it builds Unity framework tests.
-  Damir Tomić
+  Damir Tomi?
 * Modified tests/libtnp/Makefile.am so it builds Unity framework tests.
-  Damir Tomić
+  Damir Tomi?
 * Modified sntp/tests/Makefile.am so it builds Unity framework tests.
-  Damir Tomić
+  Damir Tomi?
 * tests/sandbox/smeartest.c: Harlan Stenn, Damir Tomic, Juergen Perlinger.
-* Converted from gtest to Unity: tests/bug-2803/. Damir Tomić
+* Converted from gtest to Unity: tests/bug-2803/. Damir Tomi?
 * Converted from gtest to Unity: tests/libntp/ a_md5encrypt, atoint.c,
   atouint.c, authkeys.c, buftvtots.c, calendar.c, caljulian.c,
   calyearstart.c, clocktime.c, hextoint.c, lfpfunc.c, modetoa.c,
   numtoa.c, numtohost.c, refnumtoa.c, ssl_init.c, statestr.c,
   timespecops.c, timevalops.c, uglydate.c, vi64ops.c, ymd2yd.c.
-  Damir Tomić
+  Damir Tomi?
 * Converted from gtest to Unity: sntp/tests/ kodDatabase.c, kodFile.c,
   networking.c, keyFile.c, utilities.cpp, sntptest.h,
-  fileHandlingTest.h. Damir Tomić
+  fileHandlingTest.h. Damir Tomi?
 * Converted from gtest to Unity: sntp/tests/ caltontp.c, humandate.c,
   msyslog.c, prettydate.c, recvbuff.c, sfptostr.c, tstotv.c, tvtots.c,
   sntp/tests/packetProcessing.c. Tomasz Flendrich

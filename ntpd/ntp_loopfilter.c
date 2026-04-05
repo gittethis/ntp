@@ -186,7 +186,6 @@ static struct sigaction sigsys;	/* current sigaction status */
 static struct sigaction newsigsys; /* new sigaction status */
 static sigjmp_buf env;		/* environment var. for pll_trap() */
 #endif /* SIGSYS */
-#endif /* KERNEL_PLL */
 
 static void
 sync_status(const char *what, int ostatus, int nstatus)
@@ -216,6 +215,7 @@ static char *file_name(void)
 	}
 	return this_file;
 }
+#endif /* KERNEL_PLL */
 
 /*
  * init_loopfilter - initialize loop filter data
@@ -705,12 +705,12 @@ local_clock(
 				 * becomes ineffective above the Allan intercept
 				 * where the FLL becomes effective.
 				 */
-				if (sys_poll >= allan_xpt)
+				if (sys_poll >= allan_xpt) {
 					clock_frequency +=
 					      (fp_offset - clock_offset)
-					    / ( max(ULOGTOD(sys_poll), mu)
-					       * CLOCK_FLL);
-
+					      / max(ULOGTOD(sys_poll), mu)
+					      * CLOCK_FLL;
+				}
 				/*
 				 * The PLL frequency gain (numerator) depends on
 				 * the minimum of the update interval and Allan
@@ -1189,9 +1189,18 @@ start_kern_loop(void)
 static void
 stop_kern_loop(void)
 {
+	/*
+	 * ntpd hasn't actually stopped the kernel loop using ntp_adjtime()
+	 * in this function since 2011:
+	 * https://github.com/ntp-project/ntp/commit/99fe7b84d336
+	 * So for 4.2.8p19 in 2025, we no longer claim to.  If you think
+	 * we should actually stop the loop, see that commit for the code.
+	 */
+#if 0
 	if (pll_control && kern_enable)
 		report_event(EVNT_KERN, NULL,
 		    "kernel time sync disabled");
+#endif
 }
 #endif	/* KERNEL_PLL */
 

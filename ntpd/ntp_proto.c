@@ -10,6 +10,7 @@
 #endif
 
 #include "ntpd.h"
+//#include "..\ports\winnt\vs2015\ntpd\ntp_nts.h"
 #include "ntp_stdlib.h"
 #include "ntp_unixtime.h"
 #include "ntp_control.h"
@@ -17,7 +18,6 @@
 #include "ntp_leapsec.h"
 #include "ntp_psl.h"
 #include "refidsmear.h"
-
 
 #include <stdio.h>
 #ifdef HAVE_LIBSCF_H
@@ -475,7 +475,7 @@ transmit(
 	/* [Bug 3851] drop pool servers which can no longer be reached. */
 	if (MDF_PCLNT & peer->cast_flags) {
 		if (   (IS_IPV6(&peer->srcadr) && !nonlocal_v6_addr_up)
-		    || !nonlocal_v4_addr_up) {
+		    || (IS_IPV4(&peer->srcadr) && !nonlocal_v4_addr_up)) {
 			unpeer(peer);
 			return;
 		}
@@ -1008,13 +1008,7 @@ receive(
 #ifdef DEBUG
 	am_str = amtoa(retcode);
 #endif
-	//NTS-addon
-	if (peer != NULL && (peer->flags & FLAG_NTS)) {
-		if (!nts_packet_verify(peer, rbufp, has_mac)) {
-			peer->badauth++;
-			return;
-		}
-	}
+
 	/*
 	 * Authentication is conditioned by three switches:
 	 *
@@ -1226,7 +1220,7 @@ receive(
 	 * Now come at this from a different perspective:
 	 * - If we expect a MAC and it's not there, we drop it.
 	 * - If we expect one keyID and get another, we drop it.
-	 * - If we have a MAC ahd it hasn't been validated yet, try.
+	 * - If we have a MAC and it hasn't been validated yet, try.
 	 * - if the provided MAC doesn't validate, we drop it.
 	 *
 	 * There might be more to this.
@@ -1281,7 +1275,7 @@ receive(
 	**
 	** Verify protocol operations consistent with the on-wire protocol.
 	** The protocol discards bogus and duplicate packets as well as
-	** minimizes disruptions doe to protocol restarts and dropped
+	** minimizes disruptions due to protocol restarts and dropped
 	** packets.  The operations are controlled by two timestamps:
 	** the transmit timestamp saved in the client state variables,
 	** and the origin timestamp in the server packet header.  The
@@ -1387,7 +1381,7 @@ receive(
 		    || rbufp->dstadr->addr_refid == pkt->refid
 #	    ifdef WORDS_BIGENDIAN	/* see local_refid() comment */
 		    || (   IS_IPV6(&rbufp->dstadr->sin)
-			&&rbufp->dstadr->old_refid ==  pkt->refid)
+			&& rbufp->dstadr->old_refid ==  pkt->refid)
 #	    endif
 								  ) {
 			DPRINTF(2, ("receive: sys leap: %0x, sys_stratum %d > hisstratum+1 %d, !sys_cohort %d && sys_stratum == hisstratum+1, loop refid %#x == pkt refid %#x\n", sys_leap, sys_stratum, hisstratum + 1, !sys_cohort, rbufp->dstadr->addr_refid, pkt->refid));
@@ -1427,8 +1421,7 @@ receive(
 			    rbufp->recv_length - MIN_V4_PKT_LEN, (u_char *)&pkt->exten);
 
 			/* Bug 3596: Do we want to fuzz the reftime? */
-			fast_xmit(rbufp, MODE_SERVER, skeyid,
-			    restrict_mask);
+			fast_xmit(rbufp, MODE_SERVER, skeyid, restrict_mask);
 		}
 		return;				/* hooray */
 
@@ -1514,13 +1507,13 @@ receive(
 		}
 
 		/*
-		 * After each ephemeral pool association is spun,
+		 * After each preemptible pool association is spun,
 		 * accelerate the next poll for the pool solicitor so
 		 * the pool will fill promptly.
 		 */
-		if (peer2->cast_flags & MDF_POOL)
+		if (MDF_POOL & peer2->cast_flags) {
 			peer2->nextdate = current_time + 1;
-
+		}
 		/*
 		 * Further processing of the solicitation response would
 		 * simply detect its origin timestamp as bogus for the
@@ -1595,14 +1588,14 @@ receive(
 		 * with the same remote address.  newpeer() will not
 		 * find duplicate associations on other local endpoints
 		 * if a non-NULL endpoint is supplied.  multicastclient
-		 * ephemeral associations are unique across all local
+		 * preemptible associations are unique across all local
 		 * endpoints.
 		 */
-		if (!(INT_MCASTOPEN & rbufp->dstadr->flags))
+		if (!(INT_MCASTOPEN & rbufp->dstadr->flags)) {
 			match_ep = rbufp->dstadr;
-		else
+		} else {
 			match_ep = NULL;
-
+		}
 		/*
 		 * Determine whether to execute the initial volley.
 		 */
@@ -1669,7 +1662,7 @@ receive(
 	 * This is the first packet received from a potential ephemeral
 	 * symmetric active peer.  First, deal with broken Windows clients.
 	 * Then, if NOEPEER is enabled, drop it.  If the packet meets our
-	 * authenticty requirements and is the first he sent, mobilize
+	 * authenticity requirements and is the first he sent, mobilize
 	 * a passive association.
 	 * Otherwise, kiss the frog.
 	 *
@@ -1944,21 +1937,6 @@ receive(
 		return;
 	}
 #endif	/* AUTOKEY */
-	//NTS-addon=start
-	if (peer->flags & FLAG_NTS) {
-				/*
-				 * NTS-configured peers must pass NTS packet validation
-				 * before entering the normal receive/update path.
-				 */
-			if (!nts_packet_verify(peer, rbufp, has_mac)) {
-			DPRINTF(2, ("receive: drop: NTS validation failed\n"));
-			sys_badauth++;
-			peer->badauth++;
-			return;
-			
-		}
-	}
-	//NTS-addon-end
 
 	peer->received++;
 	peer->flash &= ~PKT_TEST_MASK;
@@ -2029,27 +2007,12 @@ receive(
 	 * get a valid KoD response, though.  Since KoD packets are
 	 * a special case that complicate the checks we do next, we
 	 * handle the basic KoD checks here.
-	 *
-	 * Note that we expect the incoming KoD packet to have its
-	 * (nonzero) org, rec, and xmt timestamps set to the xmt timestamp
-	 * that we have previously sent out.  Watch interleave mode.
 	 */
 	} else if (kissCode != NOKISS) {
-		DEBUG_INSIST(!L_ISZERO(&p_xmt));
-		if (   L_ISZERO(&p_org)		/* We checked p_xmt above */
-		    || L_ISZERO(&p_rec)) {
+		if (L_ISZERO(&p_org)) {
 			peer->bogusorg++;
 			msyslog(LOG_INFO,
-				"receive: KoD packet from %s has a zero org or rec timestamp.  Ignoring.",
-				ntoa(&peer->srcadr));
-			return;
-		}
-
-		if (   !L_ISEQU(&p_xmt, &p_org)
-		    || !L_ISEQU(&p_xmt, &p_rec)) {
-			peer->bogusorg++;
-			msyslog(LOG_INFO,
-				"receive: KoD packet from %s has inconsistent xmt/org/rec timestamps.  Ignoring.",
+				"receive: KoD packet from %s has a zero org timestamp.  Ignoring.",
 				ntoa(&peer->srcadr));
 			return;
 		}
@@ -3557,12 +3520,12 @@ clock_select(void)
 	struct peer *typelocal = NULL;
 	struct peer *typepps = NULL;
 #endif /* REFCLOCK */
-	static struct endpoint *endpoint = NULL;
-	static int *indx = NULL;
-	static peer_select *peers = NULL;
-	static u_int endpoint_size = 0;
-	static u_int peers_size = 0;
-	static u_int indx_size = 0;
+	static struct endpoint *endpoint;
+	int *indx;
+	peer_select *peers;
+	size_t endpoint_size;
+	size_t peers_size;
+	size_t indx_size;
 	size_t octets;
 
 	/*
@@ -3582,15 +3545,16 @@ clock_select(void)
 	 * associations.
 	 */
 	nlist = 1;
-	for (peer = peer_list; peer != NULL; peer = peer->p_link)
+	for (peer = peer_list; peer != NULL; peer = peer->p_link) {
 		nlist++;
-	endpoint_size = ALIGNED_SIZE(nlist * 2 * sizeof(*endpoint));
-	peers_size = ALIGNED_SIZE(nlist * sizeof(*peers));
-	indx_size = ALIGNED_SIZE(nlist * 2 * sizeof(*indx));
+	}
+	endpoint_size = nlist * 2 * ALIGNED_SIZE(struct endpoint);
+	peers_size = nlist * ALIGNED_SIZE(peer_select);
+	indx_size = nlist * 2 * ALIGNED_SIZE(int);
 	octets = endpoint_size + peers_size + indx_size;
 	endpoint = erealloc(endpoint, octets);
-	peers = INCR_PTR(endpoint, endpoint_size);
-	indx = INCR_PTR(peers, peers_size);
+	peers = (void *)((char *)endpoint + endpoint_size);
+	indx = (void *)((char *)peers + peers_size);
 
 	/*
 	 * Initially, we populate the island with all the rifraff peers
@@ -4160,18 +4124,21 @@ root_distance(
  */
 static void
 peer_xmit(
-	struct peer *peer)	/* peer structure pointer */
+	struct peer *peer	/* peer structure pointer */
+	)
 {
-	msyslog(LOG_INFO, "NTS:peer_xmit---------peer %s------------------------start", peer->fqdn);
 	struct pkt xpkt;	/* transmit packet */
 	size_t	sendlen, authlen;
 	keyid_t	xkeyid = 0;	/* transmit key ID */
 	l_fp	xmt_tx, xmt_ty;
 
-	if (!peer->dstadr) {	/* can't send */
+	
+	if (!peer->dstadr) {    /* can't send */
 		msyslog(LOG_INFO, "NTS:peer_xmit---NO dstaddr");
 		return;
 	}
+
+
 	//NTS--todo / add
 	if (peer->flags & FLAG_NTS) {
 		msyslog(LOG_INFO, "NTS:peer_xmit---has NTS_FLAG");
@@ -4179,7 +4146,6 @@ peer_xmit(
 		return;
 	}
 	//NTS-addon
-
 
 	xpkt.li_vn_mode = PKT_LI_VN_MODE(sys_leap, peer->version,
 	    peer->hmode);

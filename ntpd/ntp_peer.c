@@ -581,6 +581,7 @@ peer_config(
 	keyid_t		key,
 	const char *	ident,		/* autokey group */
 	const char* fqdn
+
 	)
 {
 	u_char cast_flags;
@@ -743,15 +744,12 @@ peer_refresh_interface(
 		/*
 	 	 * Broadcast needs the socket enabled for broadcast
 	 	 */
-		if (MDF_BCAST & p->cast_flags)
+		if (MDF_BCAST & p->cast_flags) {
 			enable_broadcast(p->dstadr, &p->srcadr);
-
-		/*
-	 	 * Multicast needs the socket interface enabled for
-		 * multicast
-	 	 */
-		if (MDF_MCAST & p->cast_flags)
-			enable_multicast_if(p->dstadr, &p->srcadr);
+		}
+		if (MDF_MCAST & p->cast_flags) {
+			disable_mcast_loopback(p->dstadr);
+		}
 	}
 }
 
@@ -802,7 +800,7 @@ newpeer(
 	u_int32		ttl,
 	keyid_t		key,
 	const char *	ident,
-	const char *    fqdn
+	const char* fqdn
 	)
 {
 	struct peer *	peer;
@@ -1001,11 +999,8 @@ newpeer(
 	if ((MDF_BCAST & cast_flags) && peer->dstadr != NULL) {
 		enable_broadcast(peer->dstadr, srcadr);
 	}
-	/*
-	 * Multicast needs the socket interface enabled for multicast
-	 */
 	if ((MDF_MCAST & cast_flags) && peer->dstadr != NULL) {
-		enable_multicast_if(peer->dstadr, srcadr);
+		disable_mcast_loopback(peer->dstadr);
 	}
 #ifdef AUTOKEY
 	if (key > NTP_MAXKEY)
@@ -1014,6 +1009,7 @@ newpeer(
 	peer->ttl = ttl;
 	peer->keyid = key;
 	peer->fqdn = strdup(fqdn);
+
 	if (ident != NULL) {
 		peer->ident = estrdup(ident);
 	}

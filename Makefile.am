@@ -159,7 +159,7 @@ BHOST=`(hostname || uname -n)`
 	fi
 
 check-local:
-	if [ -d $(top_srcdir)/BitKeeper/etc/		\
+	$(AM_V_at)if [ -d $(top_srcdir)/BitKeeper/etc/	\
 	     -a bk version > /dev/null 2>&1 ];then	\
 		scripts/build/checkAuthors $(top_srcdir)/BitKeeper/etc/authors.txt $(top_srcdir)/BitKeeper/etc/Authors;	\
 	fi

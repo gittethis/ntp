@@ -952,6 +952,5 @@ struct info_dns_assoc {
 /*
  * function declarations
  */
-int get_packet_mode(struct recvbuf *rbufp); /* Return packet mode */
 
 #endif /* NTP_REQUEST_H */

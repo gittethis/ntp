@@ -64,9 +64,9 @@ typedef enum {
  *   value 3 (FOLLBY_NONACCEPTING) denotes that fact.  For accepting
  *   states, values 0 - 2 control whether the scanner forces the
  *   following token(s) to strings.
- * Bits 10 through 20 hold the next state to check not matching
+ * Bits 10 through 20 hold the next state to check when not matching
  * this state's character.
- * Bits 21 through 31 hold the next state to check matching the char.
+ * Bits 21 through 31 hold the next state when matching the char.
  */
 
 #define S_ST(ch, fb, match_n, other_n) (			\
@@ -96,15 +96,15 @@ struct LCPOS {
 struct FILE_INFO {
 	struct FILE_INFO * st_next;	/* next on stack */
 	FILE *		   fpi;		/* File Descriptor */
-	int                force_eof;	/* locked or not */
-	int                backch;	/* ungetch buffer */
+	int		   force_eof;	/* locked or not */
+	int		   backch;	/* ungetch buffer */
 	
-	struct LCPOS       curpos;	/* current scan position */
-	struct LCPOS       bakpos;	/* last line end for ungetc */
-	struct LCPOS       tokpos;	/* current token position */
-	struct LCPOS       errpos;	/* error position */
+	struct LCPOS	   curpos;	/* current scan position */
+	struct LCPOS	   bakpos;	/* last line end for ungetc */
+	struct LCPOS	   tokpos;	/* current token position */
+	struct LCPOS	   errpos;	/* error position */
 
-	char               fname[1];	/* (formal only) buffered name */
+	char		   fname[1];	/* (formal only) buffered name */
 };
 
 
@@ -127,7 +127,7 @@ int yylex(void);
 
 /* managing the input source stack itself */
 extern int/*BOOL*/ lex_init_stack(const char * path, const char * mode);
-extern void        lex_drop_stack(void);
+extern void	   lex_drop_stack(void);
 extern int/*BOOL*/ lex_flush_stack(void);
 
 /* add/remove a nested input source */
@@ -135,7 +135,7 @@ extern int/*BOOL*/ lex_push_file(const char * path, const char * mode);
 extern int/*BOOL*/ lex_pop_file(void);
 
 /* input stack state query functions */
-extern size_t      lex_level(void);
+extern size_t	   lex_level(void);
 extern int/*BOOL*/ lex_from_file(void);
 extern struct FILE_INFO * lex_current(void);
 

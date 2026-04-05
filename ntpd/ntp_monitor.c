@@ -354,6 +354,16 @@ ntp_monitor(
 		/* add one-half second to round up */
 		L_ADDUF(&interval_fp, 0x80000000);
 		interval = interval_fp.l_i;
+		/*
+		 * If the clock was recently stepped back, the interval
+		 * may be negative.  In that case we could rate-limit
+		 * and KoD our own sources for the duration of the step.
+		 * Treat the interval as if it were the minimum allowed,
+		 * ntp_minpkt (default 2s).  https://bugs.ntp.org/3971
+		 */
+		if (interval < 0) {
+			interval = ntp_minpkt;
+		}
 		mon->last = rbufp->recv_time;
 		NSRCPORT(&mon->rmtadr) = NSRCPORT(&rbufp->recv_srcadr);
 		mon->count++;
@@ -483,7 +493,7 @@ ntp_monitor(
 	mon->count = 1;
 	mon->flags = ~(RES_LIMITED | RES_KOD) & flags;
 	mon->leak = 0;
-	memcpy(&mon->rmtadr, &rbufp->recv_srcadr, sizeof(mon->rmtadr));
+	mon->rmtadr = rbufp->recv_srcadr;
 	mon->vn_mode = VN_MODE(version, mode);
 	mon->lcladr = rbufp->dstadr;
 	mon->cast_flags = (u_char)(((rbufp->dstadr->flags &

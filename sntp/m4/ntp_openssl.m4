@@ -688,6 +688,7 @@ case "$ntp_openssl" in
 	      [Suppress OpenSSL 3 deprecation warnings])
     dnl We don't want -Werror for the EVP_MD_do_all_sorted check
     CFLAGS="$NTPSSL_SAVED_CFLAGS"
+    LIBS="$ntp_ssl_libs $NTPSSL_SAVED_LIBS"
     AC_CHECK_FUNCS([EVP_MD_do_all_sorted])
     CPPFLAGS_NTP="$CPPFLAGS_NTP $ntp_ssl_cppflags"
     CFLAGS_NTP="$CFLAGS_NTP $ntp_ssl_cflags"

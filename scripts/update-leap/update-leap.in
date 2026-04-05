@@ -41,12 +41,9 @@ my $FILE_MODE = 0644;
 
 ######## DEFAULT CONFIGURATION ##########
 # LEAP FILE SRC URIS
-#    HTTPS - (default)
-#    	https://www.ietf.org/timezones/data/leap-seconds
-#    HTTP - No TLS/SSL - (not recommended)
-#	http://www.ietf.org/timezones/data/leap-seconds.list
+#    	https://data.iana.org/time-zones/tzdb/leap-seconds.list
 
-my $LEAPSRC = 'https://www.ietf.org/timezones/data/leap-seconds.list';
+my $LEAPSRC = 'https://data.iana.org/time-zones/tzdb/leap-seconds.list';
 my $LEAPFILE;
 
 # How many times to try to download new file

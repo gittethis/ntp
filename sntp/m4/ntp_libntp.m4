@@ -17,9 +17,8 @@ AC_SUBST([LDADD_LIBNTP])
 SAVED_LIBS=$LIBS
 LIBS=
 
-dnl The contents of NTP_PROG_CC used to be here...
-
 AC_PROG_INSTALL
+AC_HEADER_STDBOOL
 # [Bug 2332] because we need to know if we are using GNU ld...
 LT_PATH_LD
 
@@ -52,7 +51,7 @@ case "$ac_busted_vpath_in_make$srcdir" in
     ;;
  *) case "`${MAKE-make} -v -f /dev/null 2>/dev/null | grep 'GNU Make'`" in
      '')
-	AC_MSG_ERROR([building outside of the main directory requires GNU make])
+	AC_MSG_ERROR([building outside of the source directory requires GNU make])
     esac
     ;;
 esac
@@ -77,7 +76,7 @@ case "$host" in
     ;;
 esac
 
-AC_CHECK_FUNCS([getclock stime timegm strlcpy strlcat])
+AC_CHECK_FUNCS([getclock memchr stime timegm strlcpy strlcat])
 
 # Bug 2713
 LDADD_LIBUTIL=
@@ -167,14 +166,17 @@ case "$host" in
     AC_DEFINE([NEED_EARLY_FORK], [1], [having to fork the DNS worker early when doing chroot?])
 esac
 
-AC_CHECK_HEADERS([arpa/nameser.h sys/param.h sys/time.h sys/timers.h])
+AC_CHECK_HEADERS_ONCE(
+    [netinet/in_system.h netinet/in_systm.h netinet/in.h sys/capability.h ]
+    [ sys/prctl.h arpa/nameser.h sys/param.h sys/time.h sys/timers.h]
+    [ stdatomic.h]
+)
 # sys/sysctl.h depends on sys/param.h on OpenBSD - Bug 1576
 AC_CHECK_HEADERS([sys/sysctl.h], [], [], [
     #if defined HAVE_SYS_PARAM_H
     # include <sys/param.h>
     #endif
 ])
-AC_CHECK_HEADERS([netinet/in_system.h netinet/in_systm.h netinet/in.h])
 
 AC_CHECK_HEADERS([resolv.h], [], [], [
     #ifdef HAVE_SYS_TYPES_H
@@ -257,17 +259,6 @@ AS_UNSET([saved_LIBS])
 
 # Bug 2427 - look for recvmsg here.
 AC_CHECK_FUNCS([recvmsg])
-
-AC_C_INLINE
-
-case "$ac_cv_c_inline" in
- '')
-    ;;
- *)
-    AC_DEFINE([HAVE_INLINE], [1], [inline keyword or macro available])
-    AC_SUBST([HAVE_INLINE])
-esac
-
 
 AC_CHECK_SIZEOF([time_t])
 AC_C_CHAR_UNSIGNED		dnl CROSS_COMPILE?
@@ -583,7 +574,7 @@ case "$hw_use_rpl_vsnprintf:$hw_cv_func_vsnprintf" in
 		    char	pbuf[512];
 		    int		slen;
 
-		    strcpy(sbuf, strerror(ENOENT));
+		    strncpy(sbuf, strerror(ENOENT), sizeof(sbuf));
 		    errno = ENOENT;
 		    slen = call_vsnprintf(pbuf, sizeof(pbuf), "%m",
 					  "wrong");
@@ -617,8 +608,6 @@ AC_ARG_ENABLE(
 AC_MSG_CHECKING([if we should use /dev/clockctl])
 AC_MSG_RESULT([$ntp_use_dev_clockctl])
 
-
-AC_CHECK_HEADERS([sys/capability.h sys/prctl.h])
 
 AC_MSG_CHECKING([if we have linux capabilities (libcap)])
 
@@ -929,7 +918,7 @@ AC_CACHE_CHECK(
 	    #include <signal.h>
 	    
 	    #ifndef SIGPOLL
-	    # error
+	    # fail_test
 	    #endif
 	])],
 	[ntp_cv_hdr_def_sigpoll=yes],

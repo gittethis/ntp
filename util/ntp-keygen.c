@@ -317,7 +317,6 @@ main(
 	int	iffkey = 0;	/* generate IFF keys */
 	int	gqkey = 0;	/* generate GQ keys */
 	int	mvkey = 0;	/* update MV keys */
-	int	mvpar = 0;	/* generate MV parameters */
 	char	*sign = NULL;	/* sign key */
 	EVP_PKEY *pkey = NULL;	/* temp key */
 	const EVP_MD *ectx;	/* EVP digest */
@@ -340,6 +339,7 @@ main(
 #endif /* OPENSSL */
 
 	progname = argv[0];
+	init_lib();
 
 #ifdef SYS_WINNT
 	/* Initialize before OpenSSL checks */
@@ -409,11 +409,10 @@ main(
 		iffkey++;
 
 	if (HAVE_OPT( MV_PARAMS )) {
-		mvkey++;			/* DLH are these two swapped? */
+		mvkey++;
 		nkeys = OPT_VALUE_MV_PARAMS;
 	}
 	if (HAVE_OPT( MV_KEYS )) {
-		mvpar++;	/* not used! */	/* DLH are these two swapped? */
 		nkeys = OPT_VALUE_MV_KEYS;
 	}
 

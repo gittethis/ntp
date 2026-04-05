@@ -75,7 +75,7 @@ struct timeval timeout = {60,0};
 #define TARGET_RESOLUTION 1  /* Try for 1-millisecond accuracy
 				on Windows NT timers. */
 #pragma comment(lib, "winmm")
-isc_boolean_t ntp_port_inuse(int af, u_short port);
+isc_boolean_t ntp_port_inuse(u_short port);
 UINT wTimerRes;
 #endif /* SYS_WINNT */
 
@@ -223,7 +223,6 @@ static	int l_step_systime	(l_fp *);
 static	void	print_server (struct server *, FILE *);
 
 #ifdef SYS_WINNT
-int 	on = 1;
 WORD	wVersionRequested;
 WSADATA	wsaData;
 #endif /* SYS_WINNT */
@@ -576,15 +575,10 @@ ntpdatemain (
 			nfound = select(maxfd, &rdfdes, NULL, NULL,
 					&timeout);
 #endif
-			if (nfound > 0)
+			if (nfound > 0) {
 				input_handler();
-			else if (nfound == SOCKET_ERROR)
-			{
-#ifndef SYS_WINNT
-				if (errno != EINTR)
-#else
-				if (WSAGetLastError() != WSAEINTR)
-#endif
+			} else if (nfound == SOCKET_ERROR) {
+				if (socket_errno() != EINTR)
 					msyslog(LOG_ERR,
 #ifdef HAVE_POLL_H
 						"poll() error: %m"
@@ -1723,8 +1717,8 @@ init_io(void)
 	}
 
 #ifdef SYS_WINNT
-	if (check_ntp_port_in_use && ntp_port_inuse(AF_INET, NTP_PORT)){
-		msyslog(LOG_ERR, "the NTP socket is in use, exiting: %m");
+	if (check_ntp_port_in_use && ntp_port_inuse(NTP_PORT)){
+		msyslog(LOG_ERR, "the NTP port %d is in use, exiting: %m", NTP_PORT);
 		exit(1);
 	}
 #endif
@@ -1735,34 +1729,30 @@ init_io(void)
 	/*
 	 * For each structure returned, open and bind socket
 	 */
-	for(nbsock = 0; (nbsock < MAX_AF) && res ; res = res->ai_next) {
+	for (nbsock = 0; (nbsock < MAX_AF) && res ; res = res->ai_next) {
 	/* create a datagram (UDP) socket */
 		fd[nbsock] = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 		if (fd[nbsock] == SOCKET_ERROR) {
-#ifndef SYS_WINNT
-		if (errno == EPROTONOSUPPORT || errno == EAFNOSUPPORT ||
-		    errno == EPFNOSUPPORT)
-#else
-		int err = WSAGetLastError();
-		if (err == WSAEPROTONOSUPPORT || err == WSAEAFNOSUPPORT ||
-		    err == WSAEPFNOSUPPORT)
-#endif
-			continue;
-		msyslog(LOG_ERR, "socket() failed: %m");
-		exit(1);
-		/*NOTREACHED*/
+			socket_errno();
+			if (errno == EPROTONOSUPPORT || errno == EAFNOSUPPORT
+			    || errno == EPFNOSUPPORT) {
+				continue;
+			}
+			msyslog(LOG_ERR, "socket() failed: %m");
+			exit(1);
+			/*NOTREACHED*/
 		}
 		/* set socket to reuse address */
 		if (setsockopt(fd[nbsock], SOL_SOCKET, SO_REUSEADDR, (void*) &optval, sizeof(optval)) < 0) {
-				msyslog(LOG_ERR, "setsockopt() SO_REUSEADDR failed: %m");
-				exit(1);
-				/*NOTREACHED*/
+			msyslog(LOG_ERR, "setsockopt() SO_REUSEADDR failed: %m");
+			exit(1);
+			/*NOTREACHED*/
 		}
 #ifdef IPV6_V6ONLY
-		/* Restricts AF_INET6 socket to IPv6 communications (see RFC 2553bis-03) */
-		if (res->ai_family == AF_INET6)
-			if (setsockopt(fd[nbsock], IPPROTO_IPV6, IPV6_V6ONLY, (void*) &optval, sizeof(optval)) < 0) {
-				msyslog(LOG_ERR, "setsockopt() IPV6_V6ONLY failed: %m");
+		/* Enables IPv4-mapped IPv6 traffic -- likely pointless here */
+		if (AF_INET6 == res->ai_family
+		    && setsockopt(fd[nbsock], IPPROTO_IPV6, IPV6_V6ONLY, (void*) &optval, sizeof(optval)) < 0) {
+			msyslog(LOG_ERR, "setsockopt() IPV6_V6ONLY failed: %m");
 		}
 #endif
 
@@ -1829,9 +1819,13 @@ init_io(void)
 #  endif /* not O_NONBLOCK */
 # endif /* SYS_VXWORKS */
 #else /* SYS_WINNT */
-		if (ioctlsocket(fd[nbsock], FIONBIO, (u_long *) &on) == SOCKET_ERROR) {
-			msyslog(LOG_ERR, "ioctlsocket(FIONBIO) fails: %m");
-			exit(1);
+		{
+			u_long on = TRUE;
+
+			if (ioctlsocket(fd[nbsock], FIONBIO, (u_long *)&on) == SOCKET_ERROR) {
+				msyslog(LOG_ERR, "ioctlsocket(FIONBIO) fails: %m");
+				exit(1);
+			}
 		}
 #endif /* SYS_WINNT */
 		nbsock++;
@@ -1853,15 +1847,11 @@ sendpkt(
 	int cc;
 	SOCKET sock = INVALID_SOCKET;
 
-#ifdef SYS_WINNT
-	DWORD err;
-#endif /* SYS_WINNT */
-
 	/* Find a local family compatible socket to send ntp packet to ntp server */
-	for(i = 0; (i < MAX_AF); i++) {
-		if(AF(dest) == fd_family[i]) {
+	for (i = 0; i < MAX_AF; ++i) {
+		if (AF(dest) == fd_family[i]) {
 			sock = fd[i];
-		break;
+			break;
 		}
 	}
 
@@ -1871,17 +1861,13 @@ sendpkt(
 		/*NOTREACHED*/
 	}
 
-	cc = sendto(sock, (char *)pkt, len, 0, (struct sockaddr *)dest,
-			SOCKLEN(dest));
+	cc = sendto(sock, (char *)pkt, len, 0, &dest->sa, SOCKLEN(dest));
 
 	if (SOCKET_ERROR == cc) {
-#ifndef SYS_WINNT
-		if (errno != EWOULDBLOCK && errno != ENOBUFS)
-#else
-		err = WSAGetLastError();
-		if (err != WSAEWOULDBLOCK && err != WSAENOBUFS)
-#endif /* SYS_WINNT */
+		socket_errno();
+		if (errno != EWOULDBLOCK && errno != ENOBUFS) {
 			msyslog(LOG_ERR, "sendto(%s): %m", stohost(dest));
+		}
 	}
 }
 
@@ -2259,7 +2245,7 @@ getnetinfoservers(void)
 #endif
 
 #ifdef SYS_WINNT
-isc_boolean_t ntp_port_inuse(int af, u_short port)
+isc_boolean_t ntp_port_inuse(u_short port)
 {
 	/*
 	 * Check if NTP socket is already in use on this system
@@ -2267,19 +2253,20 @@ isc_boolean_t ntp_port_inuse(int af, u_short port)
 	 */
 
 	SOCKET checksocket;
-	struct sockaddr_in checkservice;
-	checksocket = socket(af, SOCK_DGRAM, 0);
+	sockaddr_u checkservice;
+
+	checksocket = socket(AF_INET, SOCK_DGRAM, 0);
 	if (checksocket == INVALID_SOCKET) {
 		return (ISC_TRUE);
 	}
 
-	checkservice.sin_family = (short) AF_INET;
-	checkservice.sin_addr.s_addr = INADDR_LOOPBACK;
-	checkservice.sin_port = htons(port);
+	checkservice.sa4.sin_family = AF_INET;
+	checkservice.sa4.sin_addr.s_addr = INADDR_LOOPBACK;
+	checkservice.sa4.sin_port = htons(port);
 
-	if (bind(checksocket, (struct sockaddr *)&checkservice,
-		sizeof(checkservice)) == SOCKET_ERROR) {
-		if ( WSAGetLastError() == WSAEADDRINUSE ){
+	if (bind(checksocket, &checkservice.sa,
+		 sizeof(checkservice)) == SOCKET_ERROR) {
+		if (GetLastError() == WSAEADDRINUSE){
 			closesocket(checksocket);
 			return (ISC_TRUE);
 		}

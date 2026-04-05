@@ -19,6 +19,9 @@
 #if defined(HAVE_STDINT_H)
 # include <stdint.h>
 #endif
+#ifdef HAVE_STDATOMIC_H
+# include <stdatomic.h>
+#endif
 
 /* Bug 2813 */
 #ifdef HAVE_LIMITS_H
@@ -28,18 +31,22 @@
 #include "ntp_machine.h"
 
 
-#ifndef TRUE
-# define	TRUE	1
-#endif
-#ifndef FALSE
-# define	FALSE	0
-#endif
-
 #ifdef HAVE_STDBOOL_H
 # include <stdbool.h>
 #else
-typedef int bool;	/* Can't use enum TRUE/FALSE because of above */
+  typedef int _Bool; /* C99 apparently typically uses signed char */
+# define bool _Bool;
+# define true	1
+# define false	0
+# define __bool_true_false_are_defined 1
 #endif
+
+# ifndef TRUE
+#  define	TRUE	true
+# endif
+# ifndef FALSE
+#  define	FALSE	false
+# endif
 
 
 /*
@@ -214,41 +221,12 @@ typedef union {
 #   endif
 } vint64; /* variant int 64 */
 
-
-typedef uint8_t		ntp_u_int8_t;
-typedef uint16_t	ntp_u_int16_t;
-typedef uint32_t	ntp_u_int32_t;
-
-typedef struct ntp_uint64_t { u_int32 val[2]; } ntp_uint64_t;
-
 typedef uint16_t	associd_t; /* association ID */
 #define ASSOCID_MAX	USHRT_MAX
 typedef u_int32 keyid_t;	/* cryptographic key ID */
 #define KEYID_T_MAX	(0xffffffff)
 
 typedef u_int32 tstamp_t;	/* NTP seconds timestamp */
-
-/*
- * Cloning malloc()'s behavior of always returning pointers suitably
- * aligned for the strictest alignment requirement of any type is not
- * easy to do portably, as the maximum alignment required is not
- * exposed.  Use the size of a union of the types known to represent the
- * strictest alignment on some platform.
- * ALIGNED_SIZE() assumes sizeof(max_alignment) is a power of two.
- */
-typedef union max_alignment_tag {
-	double	d;
-	long	l;
-	void *	vp;
-#ifdef HAVE_INT64
-	int64	i64;
-#endif
-} max_alignment;
-
-#define MAXALIGN		(sizeof(max_alignment))
-#define ALIGNMASK		(MAXALIGN - 1)
-#define ALIGNED_SIZE(sz)	(((sz) + ALIGNMASK) & ~ALIGNMASK)
-#define INCR_PTR(p, sz)		((void *)((char *)(p) + (sz)))
 
 /*
  * There are cases where we would get "cast increases required alignment"
@@ -259,8 +237,34 @@ typedef union max_alignment_tag {
  * In addition to quieting the warning, it also unfortunately defeats 
  * compiler type checking.
  */
+#define INCR_PTR(p, sz)		((void *)((char *)(p) + (sz)))
+#define REQD_ALIGN(typ)		offsetof(struct { char c; typ t; }, t)
+#define ALIGNED_SIZE(typ)	(  (sizeof(typ) + REQD_ALIGN(typ) - 1) \
+				 & ~(REQD_ALIGN(typ) - 1))
+#define ROUNDUP_SIZE(align, sz)	(((sz) + (align) - 1) & ~((align) - 1))
+#define QUIET_ALIGN_WARN(p)	((void *)(uintptr_t)(p))
 
-#define QUIET_ALIGN_WARN(p)	((void *)(p))
+#ifdef HAVE_STDATOMIC_H
+# define NTP_ATOMIC _Atomic
+#else
+# define NTP_ATOMIC
+#endif
+
+/*
+ * Atomic increment of a 32-bit value, safe for use across
+ * threads and signals.  The type is unsigned, but given
+ * the practical universality of twos-complement representation,
+ * it works as well for signed 32-bit values.  Returns the value
+ * after incrementing.
+ */
+static inline u_int32
+ntp_atomic_inc_32(volatile NTP_ATOMIC u_int32 *pu32) {
+#ifndef SYS_WINNT
+	return ++(*pu32);
+#else	/* SYS_WINNT follows */
+	return (u_int32)InterlockedIncrement((volatile LONG *)pu32);
+#endif
+}
 
 /*
  * On Unix struct sock_timeval is equivalent to struct timeval.
@@ -293,7 +297,7 @@ typedef int SOCKET;
 # define SOCKET_ERROR		(-1)
 # define socket_errno()		(errno)
 #else	/* SYS_WINNT follows */
-# define socket_errno()		(errno = WSAGetLastError())
+# define socket_errno()		(errno = GetLastError())
 #endif
 
 

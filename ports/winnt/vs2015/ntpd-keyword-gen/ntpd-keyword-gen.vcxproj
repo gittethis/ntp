@@ -30,7 +30,6 @@
     <ProjectName>keyword-gen</ProjectName>
     <ProjectGuid>{1B814CC1-EAD4-4A13-B29C-A67B23C9845A}</ProjectGuid>
     <RootNamespace>ntpd-keyword-gen</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup>

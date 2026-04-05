@@ -35,7 +35,7 @@ AC_PRESERVE_HELP_ORDER
 # the date YYYYMMDD optionally with -HHMM if there is more than one
 # bump in a day.
 
-ntp_configure_cache_version=20240811
+ntp_configure_cache_version=20250602
 
 # When the cache version of config.cache and configure do not
 # match, NTP_CACHEVERSION will flush the cache.
@@ -293,14 +293,11 @@ AC_CHECK_HEADER(
 	    [Use Rendezvous/DNS-SD registration])]
     )]
 )
-AC_CHECK_HEADERS([fcntl.h fnmatch.h ieeefp.h inttypes.h kvm.h math.h])
-
-AC_CHECK_HEADERS([memory.h netdb.h poll.h])
-AC_CHECK_HEADERS([sgtty.h stdatomic.h])
-AC_HEADER_STDBOOL
-AC_CHECK_HEADERS([stdlib.h string.h termio.h])
-AC_CHECK_HEADERS([termios.h timepps.h timex.h unistd.h])
-
+AC_CHECK_HEADERS_ONCE(
+    [fcntl.h fnmatch.h ieeefp.h inttypes.h kvm.h math.h memory.h netdb.h]
+    [ poll.h sgtty.hstdlib.h string.h termio.h termios.h timepps.h timex.h]
+    [ unistd.h]
+)
 case "$host" in
  *-*-aix*)
     AC_CHECK_HEADERS([utmpx.h])
@@ -385,24 +382,7 @@ esac
 
 case "$ac_cv_header_stdatomic_h" in
  yes)
-	AC_CHECK_FUNCS([atomic_thread_fence])
-	AC_CACHE_CHECK(
-	    [for atomic_thread_fence()],
-	    [ntp_cv_func_atomic_thread_fence],
-	    [AC_COMPILE_IFELSE(
-		[AC_LANG_PROGRAM(
-		    [[
-			#include <stdatomic.h>
-		    ]],
-		    [[
-			atomic_thread_fence(memory_order_seq_cst);
-		    ]]
-		)],
-		[ntp_cv_func_atomic_thread_fence=yes],
-		[ntp_cv_func_atomic_thread_fence=no]
-	    )]
-	)
-    ;;
+    AC_CHECK_FUNCS([atomic_thread_fence])
 esac
 
 case "$host" in
@@ -892,6 +872,9 @@ case "$host" in
     AC_CHECK_FUNCS([memlk], [ac_cv_func_mlockall=yes])
     AC_CHECK_FUNCS([mlockall])
     ;;
+ *-*-darwin*)
+    dnl	Stub
+    ;;
  *) AC_CHECK_FUNCS([mlockall])
     ;;
 esac
@@ -909,7 +892,7 @@ case "$host" in
     ;;
 esac
 AC_CHECK_FUNCS([setlinebuf setpgid setpriority setsid setvbuf])
-AC_CHECK_FUNCS([strdup strnlen memchr strerror setrlimit strchr])
+AC_CHECK_FUNCS([_strupr strdup strnlen strerror setrlimit strchr])
 case "$host" in
  *-*-aix[[4-9]]*)
     # XXX only verified thru AIX6.
@@ -4192,7 +4175,7 @@ AC_MSG_RESULT([$ans])
 case "$ans" in
  no)
     AC_DEFINE([DISABLE_BUG3527_FIX], [1],
-	[use old autokey session key behavior?])
+	[use old mode 7 fudgetime2?])
 esac
 
 

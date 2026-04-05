@@ -2,7 +2,7 @@
 <Project>
   <ProjectOutputs>
     <ProjectOutput>
-      <FullPath>D:\ntp\ports\winnt\vs2015\x64-out\Debug\ntp-keygen.exe</FullPath>
+      <FullPath>D:\ntp-stable-dlh-260328\ports\winnt\vs2015\x64-out\Debug\ntp-keygen.exe</FullPath>
     </ProjectOutput>
   </ProjectOutputs>
   <ContentFiles />

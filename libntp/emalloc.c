@@ -89,7 +89,7 @@ oreallocarrayxz(
 	size_t size,
 	size_t extra
 #ifdef EREALLOC_CALLSITE		/* ntp_malloc.h */
-	,
+		    ,
 	const char *	file,
 	int		line
 #endif
@@ -136,15 +136,4 @@ estrdup_impl(
 
 	return copy;
 }
-
-
-#if 0
-#ifndef EREALLOC_CALLSITE
-void *
-emalloc(size_t newsz)
-{
-	return ereallocz(NULL, newsz, 0, FALSE);
-}
-#endif
-#endif
 

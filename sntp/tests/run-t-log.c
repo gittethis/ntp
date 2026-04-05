@@ -36,8 +36,10 @@ extern void testWriteInCustomLogfile(void);
 //=======Suite Setup=====
 static void suite_setup(void)
 {
+extern void init_lib(void);
 extern int change_iobufs(int);
 extern int change_logfile(const char*, int);
+init_lib();
 change_iobufs(1);
 change_logfile("stderr", 0);
 }
@@ -59,9 +61,9 @@ int main(int argc, char *argv[])
   progname = argv[0];
   suite_setup();
   UnityBegin("t-log.c");
-  RUN_TEST(testChangePrognameInMysyslog, 10);
-  RUN_TEST(testOpenLogfileTest, 11);
-  RUN_TEST(testWriteInCustomLogfile, 12);
+  RUN_TEST(testChangePrognameInMysyslog, 9);
+  RUN_TEST(testOpenLogfileTest, 10);
+  RUN_TEST(testWriteInCustomLogfile, 11);
 
   return (UnityEnd());
 }

@@ -2,10 +2,10 @@
 <Project>
   <ProjectOutputs>
     <ProjectOutput>
-      <FullPath>D:\ntp\ports\winnt\vs2015\x64-tmp\Debug\keyword-gen.exe</FullPath>
+      <FullPath>D:\ntp-stable-dlh-260328\ports\winnt\vs2015\x64-tmp\Debug\keyword-gen.exe</FullPath>
     </ProjectOutput>
     <ProjectOutput>
-      <FullPath>D:\ntp\ports\winnt\vs2015\x64-out\Debug\ntpd.exe</FullPath>
+      <FullPath>D:\ntp-stable-dlh-260328\ports\winnt\vs2015\x64-out\Debug\ntpd.exe</FullPath>
     </ProjectOutput>
   </ProjectOutputs>
   <ContentFiles />

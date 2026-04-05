@@ -1,9 +1,9 @@
-.Dd May 25 2024
+.Dd December 1 2025
 .Dt NTPD 1ntpdmdoc User Commands
 .Os
 .\"  EDIT THIS FILE WITH CAUTION  (ntpd-opts.mdoc)
 .\"
-.\"  It has been AutoGen-ed  May 25, 2024 at 12:03:54 AM by AutoGen 5.18.16
+.\"  It has been AutoGen-ed  December  1, 2025 at 06:27:45 PM by AutoGen 5.18.16
 .\"  From the definitions    ntpd-opts.def
 .\"  and the template file   agmdoc-cmd.tpl
 .Sh NAME
@@ -354,19 +354,29 @@ See the
 \fBtinker\fP
 configuration file directive for other options.
 Note: The kernel time discipline is disabled with this option.
+.It  Fl \-enable\-udp\-timestamps 
+Configure receive timestamps of UDP packets (run as Admin).
+.sp
+Configure each network adapter to capture a timestamp for each UDP
+packet received in the kernel.  This option modifies registry settings
+that require Administrator access.  The adapters or Windows must be
+restarted for the changes to take effect.  The registry values are
+type \fBREG_DWORD\fP named \fBSoftwareTimestampSettings\fP.
 .It  Fl \-usepcc 
-Use CPU cycle counter (Windows only).
+Use CPU cycle counter (up to Windows 7).
 .sp
 Attempt to substitute the CPU counter for \fBQueryPerformanceCounter\fP.
 The CPU counter and \fBQueryPerformanceCounter\fP are compared, and if
 they have the same frequency, the CPU counter (RDTSC on x86) is
-used directly, saving the overhead of a system call.
+used directly, saving the overhead of a system call.  This option has no
+effect on Windows 8 and later.
 .It  Fl \-pccfreq  Ns = Ns Ar string 
-Force CPU cycle counter use (Windows only).
+Force CPU cycle counter use (up to Windows 7).
 .sp
-Force substitution the CPU counter for \fBQueryPerformanceCounter\fP.
+Force substituting the CPU counter for \fBQueryPerformanceCounter\fP.
 The CPU counter (RDTSC on x86) is used unconditionally with the
-given frequency (in Hz).
+given frequency (in Hz).  This option has no effect on Windows 8 and
+later.
 .It  Fl m , Fl \-mdns 
 Register with mDNS as a NTP server.
 .sp

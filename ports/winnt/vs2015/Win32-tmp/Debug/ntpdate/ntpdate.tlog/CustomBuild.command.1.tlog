@@ -1,0 +1,4 @@
+^D:\NTP-STABLE-DLH-260328\SNTP\SCM-REV
+call ..\..\scripts\mkver.bat -U scm-rev
+^D:\NTP-STABLE-DLH-260328\PORTS\WINNT\VS2015\NTPDATE\SCM-REV
+call ..\..\scripts\mkver.bat -S scm-rev -P ntpdate

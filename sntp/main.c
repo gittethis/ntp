@@ -982,15 +982,20 @@ void sntp_addremove_fd(
 		return;
 	}
 
+	if (!is_pipe) {
+		make_socket_nonblocking(fd);
+	}
 	ev = event_new(base, fd, EV_READ | EV_PERSIST,
 		       &worker_resp_cb, c);
 	if (NULL == ev) {
 		msyslog(LOG_ERR,
-			"sntp_addremove_fd: event_new(base, fd) failed!");
+			"%s: event_new(base, fd) failed!", __func__);
 		return;
 	}
 	c->resp_read_ctx = ev;
-	event_add(ev, NULL);
+	if (0 != event_add(ev, NULL)) {
+		msyslog(LOG_ERR, "%s: event_add failed!", __func__);
+	}
 }
 
 

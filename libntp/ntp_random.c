@@ -469,7 +469,7 @@ ntp_setstate(
  *
  * Returns a 31-bit random number.
  */
-long
+int32
 ntp_random( void )
 {
 	register long i;
@@ -495,7 +495,7 @@ ntp_random( void )
 
 		fptr = f; rptr = r;
 	}
-	return(i);
+	return (int32)i;
 }
 
 /*
@@ -505,10 +505,11 @@ ntp_random( void )
  * few locations where the transformation was made in an ad-hoc style
  * (and in one instance, wrong...)
  *
- * returns a number in [0.0 .. 1.0], both ends inclusive
+ * returns a number in [0.0 .. 1.0), excluding 1.0 to ensure fuzz does
+ * not reach the next potential get_ostime() tick.
  */
 double
 ntp_uurandom( void )
 {
-	return (double)ntp_random() / 0x7FFFFFFFu;
+	return (double)ntp_random() / 0x80000000;
 }

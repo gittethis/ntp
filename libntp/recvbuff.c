@@ -85,27 +85,19 @@ lowater_additions(void)
 	return lowater_adds;
 }
 
-static inline void 
-initialise_buffer(recvbuf_t *buff)
-{
-	ZERO(*buff);
-}
-
 static void
-create_buffers(
-	size_t			nbufs
-)
+create_buffers(size_t nbufs)
 {
 	static const u_int	chunk =
-#   ifndef DEBUG
+#ifndef DEBUG
 					RECV_INC;
-#   else
+#else
 	/* Allocate each buffer individually so they can be free()d
 	 * during ntpd shutdown on DEBUG builds to keep them out of heap
 	 * leak reports.
 	 */
 					1;
-#   endif
+#endif
 	static int/*BOOL*/	doneonce;
 	recvbuf_t *		bufp;
 	u_int			i;
@@ -225,7 +217,7 @@ freerecvbuf(recvbuf_t *rb)
 	}
 }
 
-	
+
 void
 add_full_recv_buffer(recvbuf_t *rb)
 {
@@ -241,9 +233,7 @@ add_full_recv_buffer(recvbuf_t *rb)
 
 
 recvbuf_t *
-get_free_recv_buffer(
-    int /*BOOL*/ urgent
-    )
+get_free_recv_buffer(int /*BOOL*/ urgent)
 {
 	recvbuf_t *buffer = NULL;
 
@@ -255,7 +245,7 @@ get_free_recv_buffer(
 	if (buffer != NULL) {
 		if (free_recvbufs)
 			--free_recvbufs;
-		initialise_buffer(buffer);
+		ZERO(*buffer);
 		++buffer->used;
 	} else {
 		++buffer_shortfall;
@@ -268,9 +258,7 @@ get_free_recv_buffer(
 
 #ifdef HAVE_IO_COMPLETION_PORT
 recvbuf_t *
-get_free_recv_buffer_alloc(
-    int /*BOOL*/ urgent
-    )
+get_free_recv_buffer_alloc(int /*BOOL*/ urgent)
 {
 	LOCK_F();	
 	if (free_recvbufs <= emerg_recvbufs || buffer_shortfall > 0)
@@ -316,9 +304,7 @@ get_full_recv_buffer(void)
  *				 from a given file descriptor.
  */
 void
-purge_recv_buffers_for_fd(
-	int	fd
-	)
+purge_recv_buffers_for_fd(int fd)
 {
 	recvbuf_t *rbufp;
 	recvbuf_t *next;

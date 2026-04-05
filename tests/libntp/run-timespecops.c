@@ -65,8 +65,10 @@ extern void test_ToString(void);
 //=======Suite Setup=====
 static void suite_setup(void)
 {
+extern void init_lib(void);
 extern int change_iobufs(int);
 extern int change_logfile(const char*, int);
+init_lib();
 change_iobufs(1);
 change_logfile("stderr", 0);
 }

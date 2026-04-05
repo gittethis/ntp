@@ -18,10 +18,14 @@
 #include "ntp_iocpltypes.h"
 
 /*
-* ====================================================================
-* Shared lock manipulation
-* ====================================================================
-*/
+ * ====================================================================
+ * Shared lock manipulation
+ * ====================================================================
+ * 
+ * References to a lock in IoHndPad_T apparently refer to the
+ * reference count modified with atomic operations.
+ * -- DLH
+ */
 
 /* --------------------------------------------------------------------
  * Create new shared lock node. The shared lock is returned with a
@@ -59,7 +63,6 @@ iohpAttach(
 	if (lp != NULL)
 		InterlockedIncrement(&lp->refc_count);
 	return lp;
-
 }
 
 /* --------------------------------------------------------------------
@@ -90,7 +93,7 @@ iohpRefClockOK(
 	const IoHndPad_T *	lp
 	)
 {
-	return	lp->rsrc.rio && lp->rsrc.rio->active;
+	return	lp->rsrc.rio != NULL && lp->rsrc.rio->active;
 }
 
 /* --------------------------------------------------------------------
@@ -102,12 +105,11 @@ iohpEndPointOK(
 const IoHndPad_T *	lp
 )
 {
-	return	lp->rsrc.ept &&	!lp->rsrc.ept->ignore_packets;
+	return	lp->rsrc.ept != NULL && !lp->rsrc.ept->ignore_packets;
 }
 
 /* --------------------------------------------------------------------
- * Enqueue a receive buffer under lock guard, but only if the shared
- * lock is still active and a given predicate function holds.
+ * Enqueue a receive buffer if a given predicate holds.
  *
  * Returns TRUE if buffer was queued, FALSE in all other cases.
  *
@@ -122,6 +124,7 @@ iohpQueueLocked(
 	)
 {
 	BOOL	done = FALSE;
+
 	if (lp) {
 		done = (*pred)(lp);
 		if (done)
@@ -154,7 +157,7 @@ DevCtxAlloc(void)
 		/* The initial COV values make sure there is no busy
 		* loop on unused/empty slots.
 		*/
-		for (slot = 0; slot < PPS_QUEUE_LEN; slot++)
+		for (slot = 0; slot < COUNTOF(devCtx->pps_buff); slot++)
 			devCtx->pps_buff[slot].cov_count = ~slot;
 	}
 	return devCtx;
@@ -241,28 +244,13 @@ IoCtxRelease(
 		"Release overlapped IO data buffer";
 
 	if (ctx) {
-		if (ctx->flRawMem)
+		if (ctx->flRawMem) {
 			IOCPLPoolFree(ctx->trans_buf, dmsg);
-		else
+		} else {
 			freerecvbuf(ctx->recv_buf);
+		}
 		IoCtxFree(ctx);
 	}
-}
-
-/* --------------------------------------------------------------------
- * Check if any source is attached to shared lock associated with
- * this context node.
- *
- * UNGUARDED -- ONLY CALL UNDER LOCK.
- */
-BOOL __fastcall
-IoCtxAlive(
-	IoCtx_t *	ctx
-	)
-{
-	return ctx			&&
-		ctx->iopad		&&
-		ctx->iopad->rsrc.any;
 }
 
 /* --------------------------------------------------------------------
@@ -275,28 +263,25 @@ IoCtxAlive(
  * !!NOTE!! The context object and the buffer are consumed by this
  * call IN ANY CASE, independent of the function result!
  */
-BOOL
+BOOL __fastcall
 IoCtxStartChecked(
 	IoCtx_t *	lpo,
-	IoCtxStarterT	func,
-	recvbuf_t *	buf
+	IoCtxStarterT	func
 	)
 {
 	BOOL		done  = FALSE;
 	IoHndPad_T *	iopad = lpo->iopad;
-	if (iopad != NULL) {
-		if ((lpo->io.hnd == iopad->handles[0]) ||
-		    (lpo->io.hnd == iopad->handles[1])  )
-		{
-			done = (func)(lpo, buf);
-			lpo  = NULL; /* consumed by 'func' */
-		}
+
+	if (   lpo->io.hnd == iopad->handles[0]
+	    || lpo->io.hnd == iopad->handles[1]) {
+		done = (*func)(lpo, lpo->recv_buf);
+		lpo  = NULL; /* consumed by 'func' */
 	}
 	if (lpo != NULL) {
-		freerecvbuf(buf);
+		freerecvbuf(lpo->recv_buf);
 		IoCtxFree(lpo);
 	}
 	return done;
 }
 
-/* -*- that's all folks -*- */
+/* -*- that's all folks, EOF ntp_iocpltypes.c -*- */

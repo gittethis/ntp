@@ -1,7 +1,7 @@
 /*
  *  EDIT THIS FILE WITH CAUTION  (ntpd-opts.h)
  *
- *  It has been AutoGen-ed  May 25, 2024 at 12:03:08 AM by AutoGen 5.18.16
+ *  It has been AutoGen-ed  December  1, 2025 at 06:26:47 PM by AutoGen 5.18.16
  *  From the definitions    ntpd-opts.def
  *  and the template file   options
  *
@@ -72,47 +72,48 @@
  *  Enumeration of each option type for ntpd
  */
 typedef enum {
-    INDEX_OPT_IPV4              =  0,
-    INDEX_OPT_IPV6              =  1,
-    INDEX_OPT_AUTHREQ           =  2,
-    INDEX_OPT_AUTHNOREQ         =  3,
-    INDEX_OPT_BCASTSYNC         =  4,
-    INDEX_OPT_CONFIGFILE        =  5,
-    INDEX_OPT_DEBUG_LEVEL       =  6,
-    INDEX_OPT_SET_DEBUG_LEVEL   =  7,
-    INDEX_OPT_DRIFTFILE         =  8,
-    INDEX_OPT_PANICGATE         =  9,
-    INDEX_OPT_FORCE_STEP_ONCE   = 10,
-    INDEX_OPT_JAILDIR           = 11,
-    INDEX_OPT_INTERFACE         = 12,
-    INDEX_OPT_KEYFILE           = 13,
-    INDEX_OPT_LOGFILE           = 14,
-    INDEX_OPT_NOVIRTUALIPS      = 15,
-    INDEX_OPT_MODIFYMMTIMER     = 16,
-    INDEX_OPT_NOFORK            = 17,
-    INDEX_OPT_NICE              = 18,
-    INDEX_OPT_PIDFILE           = 19,
-    INDEX_OPT_PRIORITY          = 20,
-    INDEX_OPT_QUIT              = 21,
-    INDEX_OPT_PROPAGATIONDELAY  = 22,
-    INDEX_OPT_SAVECONFIGQUIT    = 23,
-    INDEX_OPT_STATSDIR          = 24,
-    INDEX_OPT_TRUSTEDKEY        = 25,
-    INDEX_OPT_USER              = 26,
-    INDEX_OPT_UPDATEINTERVAL    = 27,
-    INDEX_OPT_VAR               = 28,
-    INDEX_OPT_DVAR              = 29,
-    INDEX_OPT_WAIT_SYNC         = 30,
-    INDEX_OPT_SLEW              = 31,
-    INDEX_OPT_USEPCC            = 32,
-    INDEX_OPT_PCCFREQ           = 33,
-    INDEX_OPT_MDNS              = 34,
-    INDEX_OPT_VERSION           = 35,
-    INDEX_OPT_HELP              = 36,
-    INDEX_OPT_MORE_HELP         = 37
+    INDEX_OPT_IPV4                   =  0,
+    INDEX_OPT_IPV6                   =  1,
+    INDEX_OPT_AUTHREQ                =  2,
+    INDEX_OPT_AUTHNOREQ              =  3,
+    INDEX_OPT_BCASTSYNC              =  4,
+    INDEX_OPT_CONFIGFILE             =  5,
+    INDEX_OPT_DEBUG_LEVEL            =  6,
+    INDEX_OPT_SET_DEBUG_LEVEL        =  7,
+    INDEX_OPT_DRIFTFILE              =  8,
+    INDEX_OPT_PANICGATE              =  9,
+    INDEX_OPT_FORCE_STEP_ONCE        = 10,
+    INDEX_OPT_JAILDIR                = 11,
+    INDEX_OPT_INTERFACE              = 12,
+    INDEX_OPT_KEYFILE                = 13,
+    INDEX_OPT_LOGFILE                = 14,
+    INDEX_OPT_NOVIRTUALIPS           = 15,
+    INDEX_OPT_MODIFYMMTIMER          = 16,
+    INDEX_OPT_NOFORK                 = 17,
+    INDEX_OPT_NICE                   = 18,
+    INDEX_OPT_PIDFILE                = 19,
+    INDEX_OPT_PRIORITY               = 20,
+    INDEX_OPT_QUIT                   = 21,
+    INDEX_OPT_PROPAGATIONDELAY       = 22,
+    INDEX_OPT_SAVECONFIGQUIT         = 23,
+    INDEX_OPT_STATSDIR               = 24,
+    INDEX_OPT_TRUSTEDKEY             = 25,
+    INDEX_OPT_USER                   = 26,
+    INDEX_OPT_UPDATEINTERVAL         = 27,
+    INDEX_OPT_VAR                    = 28,
+    INDEX_OPT_DVAR                   = 29,
+    INDEX_OPT_WAIT_SYNC              = 30,
+    INDEX_OPT_SLEW                   = 31,
+    INDEX_OPT_ENABLE_UDP_TIMESTAMPS  = 32,
+    INDEX_OPT_USEPCC                 = 33,
+    INDEX_OPT_PCCFREQ                = 34,
+    INDEX_OPT_MDNS                   = 35,
+    INDEX_OPT_VERSION                = 36,
+    INDEX_OPT_HELP                   = 37,
+    INDEX_OPT_MORE_HELP              = 38
 } teOptIndex;
 /** count of all options for ntpd */
-#define OPTION_CT    38
+#define OPTION_CT    39
 /** ntpd version */
 #define NTPD_VERSION       "4.2.8p18"
 /** Full ntpd version text */
@@ -296,6 +297,10 @@ typedef enum {
 #  warning undefining SLEW due to option name conflict
 #  undef   SLEW
 # endif
+# ifdef    ENABLE_UDP_TIMESTAMPS
+#  warning undefining ENABLE_UDP_TIMESTAMPS due to option name conflict
+#  undef   ENABLE_UDP_TIMESTAMPS
+# endif
 # ifdef    USEPCC
 #  warning undefining USEPCC due to option name conflict
 #  undef   USEPCC
@@ -341,6 +346,7 @@ typedef enum {
 # undef DVAR
 # undef WAIT_SYNC
 # undef SLEW
+# undef ENABLE_UDP_TIMESTAMPS
 # undef USEPCC
 # undef PCCFREQ
 # undef MDNS
@@ -391,15 +397,16 @@ typedef enum {
 #define OPT_VALUE_WAIT_SYNC      (DESC(WAIT_SYNC).optArg.argInt)
 #endif /* HAVE_WORKING_FORK */
 #define VALUE_OPT_SLEW           'x'
-#define VALUE_OPT_USEPCC         0x1004
-#define VALUE_OPT_PCCFREQ        0x1005
+#define VALUE_OPT_ENABLE_UDP_TIMESTAMPS 0x1004
+#define VALUE_OPT_USEPCC         0x1005
+#define VALUE_OPT_PCCFREQ        0x1006
 #define VALUE_OPT_MDNS           'm'
 /** option flag (value) for help-value option */
 #define VALUE_OPT_HELP          '?'
 /** option flag (value) for more-help-value option */
 #define VALUE_OPT_MORE_HELP     '!'
 /** option flag (value) for version-value option */
-#define VALUE_OPT_VERSION       0x1006
+#define VALUE_OPT_VERSION       0x1007
 /*
  *  Interface defines not associated with particular options
  */

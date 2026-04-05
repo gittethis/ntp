@@ -5,7 +5,6 @@
 #include <config.h>
 #endif
 
-#include <isc/mutex.h>
 #include <isc/net.h>
 #include <isc/result.h>
 
@@ -13,15 +12,23 @@
 #include "ntp_stdlib.h"
 #include "lib_strbuf.h"
 
-#define LIB_NUMBUF	10
+/*
+ * Keep the number of buffers a power of 2 so a mask can be used for modulo
+ * in lib_getbuf().  With 16 buffers even a large number of printf/syslog
+ * args being from lib_getbuf() consumers nesting in a few threads there
+ * should be no overuse, though there's no way to catch it.
+ */
+#define LIB_NUMBUF_EXP	4
+#define LIB_NUMBUF	(1 << LIB_NUMBUF_EXP)
 
 /*
- * Storage declarations
+ * Storage declarations.  To avoid spurious strict aliasing warnings,
+ * lib_getbuf accesses lib_stringbuf_storage via the array of pointers
+ * lib_stringbuf.
  */
 static char		lib_stringbuf_storage[LIB_NUMBUF][LIB_BUFLENGTH];
 static char *		lib_stringbuf[LIB_NUMBUF];
 int			lib_inited;
-static isc_mutex_t	lib_mutex;
 int			ipv4_works;
 int			ipv6_works;
 int			debug;
@@ -48,25 +55,21 @@ init_lib(void)
 	for (u = 0; u < COUNTOF(lib_stringbuf); u++) {
 		lib_stringbuf[u] = lib_stringbuf_storage[u];
 	}
-	isc_mutex_init(&lib_mutex);
 	lib_inited = TRUE;
 }
 
-
+/*
+ * Thread-safe fetch of the next round-robin string buffer of LIB_BUFLENGTH.
+ */
 char *
 lib_getbuf(void)
 {
-	static int	lib_nextbuf;
-	int		mybuf;
+	static volatile NTP_ATOMIC u_int32	lib_nextbuf;
+	u_int32					mybuf;
 
-	if (!lib_inited) {
-		init_lib();
-	}
-	isc_mutex_lock(&lib_mutex);
-	mybuf = lib_nextbuf;
-	lib_nextbuf = (1 + mybuf) % COUNTOF(lib_stringbuf);
-	isc_mutex_unlock(&lib_mutex);
-	zero_mem(lib_stringbuf[mybuf], LIB_BUFLENGTH);
+	mybuf = ntp_atomic_inc_32(&lib_nextbuf);
+	mybuf &= COUNTOF(lib_stringbuf) - 1;	/* faster than modulo */
+	lib_stringbuf[mybuf][0] = '\0';
 
 	return lib_stringbuf[mybuf];
 }

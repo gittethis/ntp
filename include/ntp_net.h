@@ -25,6 +25,13 @@
 #include "ntp_rfc2553.h"
 #include "ntp_malloc.h"
 
+
+ /* see sntp/m4/ntp_ipv6.m4 */
+#ifdef HAVE_STRUCT_IN6_ADDR___U6_ADDR__U6_ADDR32
+# define s6_addr32 __u6_addr.__u6_addr32
+# define HAVE_STRUCT_IN6_ADDR_S6_ADDR32 1
+#endif
+
 typedef union {
 	struct sockaddr		sa;
 	struct sockaddr_in	sa4;
@@ -118,10 +125,7 @@ typedef union {
 	    ? sizeof(struct sockaddr_in)			\
 	    : sizeof(struct sockaddr_in6))
 
-#define SOCKLEN(psau)						\
-	(IS_IPV4(psau)						\
-	    ? sizeof((psau)->sa4)				\
-	    : sizeof((psau)->sa6))
+#define SOCKLEN(psau)	SIZEOF_SOCKADDR(AF(psau))
 
 #define ZERO_SOCK(psau)						\
 	ZERO(*(psau))
@@ -147,7 +151,12 @@ typedef union {
 		SET_ONESMASK(psau);				\
 	} while (0)
 
-/* 
+/*
+ * Arguably ipv4_prefix() and ipv6_prefix() in ntp_restrict.c should be
+ * here, but so far they're used only in that file.
+ * Similarly subnet_mask() in ntp_config.c.
+ */
+/*
  * compare two in6_addr returning negative, 0, or positive.
  * ADDR6_CMP is negative if *pin6A is lower than *pin6B, zero if they
  * are equal, positive if *pin6A is higher than *pin6B.  IN6ADDR_ANY

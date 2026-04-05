@@ -6,7 +6,7 @@
 #
 # EDIT THIS FILE WITH CAUTION  (invoke-ntpd.texi)
 #
-# It has been AutoGen-ed  May 25, 2024 at 12:04:00 AM by AutoGen 5.18.16
+# It has been AutoGen-ed  December  1, 2025 at 06:27:47 PM by AutoGen 5.18.16
 # From the definitions    ntpd-opts.def
 # and the template file   agtexi-cmd.tpl
 @end ignore
@@ -114,6 +114,7 @@ This software is released under the NTP license, <http://ntp.org/license>.
 * ntpd updateinterval::         updateinterval option (-U)
 * ntpd wait-sync::              wait-sync option (-w)
 * ntpd slew::                   slew option (-x)
+* ntpd enable-udp-timestamps::  enable-udp-timestamps option
 * ntpd usepcc::                 usepcc option
 * ntpd pccfreq::                pccfreq option
 * ntpd mdns::                   mdns option (-m)
@@ -617,11 +618,29 @@ See the
 @code{tinker}
 configuration file directive for other options.
 Note: The kernel time discipline is disabled with this option.
+@node ntpd enable-udp-timestamps
+@subsection enable-udp-timestamps option
+@cindex ntpd-enable-udp-timestamps
+
+This is the ``configure receive timestamps of udp packets (run as admin)'' option.
+
+@noindent
+This option has some usage constraints.  It:
+@itemize @bullet
+@item
+must be compiled in by defining @code{SYS_WINNT} during the compilation.
+@end itemize
+
+Configure each network adapter to capture a timestamp for each UDP
+packet received in the kernel.  This option modifies registry settings
+that require Administrator access.  The adapters or Windows must be
+restarted for the changes to take effect.  The registry values are
+type @code{REG_DWORD} named @code{SoftwareTimestampSettings}.
 @node ntpd usepcc
 @subsection usepcc option
 @cindex ntpd-usepcc
 
-This is the ``use cpu cycle counter (windows only)'' option.
+This is the ``use cpu cycle counter (up to windows 7)'' option.
 
 @noindent
 This option has some usage constraints.  It:
@@ -633,12 +652,13 @@ must be compiled in by defining @code{SYS_WINNT} during the compilation.
 Attempt to substitute the CPU counter for @code{QueryPerformanceCounter}.
 The CPU counter and @code{QueryPerformanceCounter} are compared, and if
 they have the same frequency, the CPU counter (RDTSC on x86) is
-used directly, saving the overhead of a system call.
+used directly, saving the overhead of a system call.  This option has no
+effect on Windows 8 and later.
 @node ntpd pccfreq
 @subsection pccfreq option
 @cindex ntpd-pccfreq
 
-This is the ``force cpu cycle counter use (windows only)'' option.
+This is the ``force cpu cycle counter use (up to windows 7)'' option.
 This option takes a string argument.
 
 @noindent
@@ -648,9 +668,10 @@ This option has some usage constraints.  It:
 must be compiled in by defining @code{SYS_WINNT} during the compilation.
 @end itemize
 
-Force substitution the CPU counter for @code{QueryPerformanceCounter}.
+Force substituting the CPU counter for @code{QueryPerformanceCounter}.
 The CPU counter (RDTSC on x86) is used unconditionally with the
-given frequency (in Hz).
+given frequency (in Hz).  This option has no effect on Windows 8 and
+later.
 @node ntpd mdns
 @subsection mdns option (-m)
 @cindex ntpd-mdns

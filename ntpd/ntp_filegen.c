@@ -257,7 +257,7 @@ filegen_open(
 				}
 			} else {
 				/*
-				 * Ehh? Not a regular file ?? strange !!!!
+				 * Ehh? Not a regular file ?? strange !!
 				 */
 				msyslog(LOG_ERR, 
 					"expected regular file for %s "

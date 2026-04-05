@@ -1,0 +1,5 @@
+# darwin (macos) hardening flags
+# Link-time optimization (link-time codegen) helps tests/ntpd/leapfile.c linking
+NTP_HARD_CFLAGS="-flto"
+NTP_HARD_CPPFLAGS=""
+NTP_HARD_LDFLAGS="-flto"

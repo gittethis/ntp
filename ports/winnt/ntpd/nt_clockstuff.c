@@ -70,13 +70,6 @@ static long last_Adj = 0;
 #define LS_CORR_INTV   ( 1000ul * LS_CORR_INTV_SECS )  
 #define LS_CORR_LIMIT  ( 250ul )  // quarter second
 
-typedef union ft_ull {
-	FILETIME ft;
-	ULONGLONG ull;
-	LONGLONG ll;
-	LARGE_INTEGER li;
-} FT_ULL;
-
 /* leap second stuff */
 static FT_ULL ls_ft;
 static DWORD ls_time_adjustment;
@@ -233,10 +226,19 @@ do {	\
  * NT native time format is 100's of nanoseconds since 1601-01-01.
  * Helpers for converting between "hectonanoseconds" and the 
  * performance counter scale from which interpolated time is
- * derived.
+ * derived.  Windows use FILETIME as the typedef its hns timestamps.
  */
 #define HNS2PERF(hns)	((hns) * PerfCtrFreq / HECTONANOSECONDS)
 #define PERF2HNS(ctr)	((ctr) * HECTONANOSECONDS / PerfCtrFreq)
+
+#define FILETIMETOLFP(lfp, ft)						\
+do {									\
+	u_int64 hns = (ft) - FILETIME_1970;				\
+									\
+	(lfp)->l_ui = JAN_1970 + (u_int32)(hns / HECTONANOSECONDS);	\
+	(lfp)->l_uf = (u_int32)((hns % HECTONANOSECONDS) *		\
+			      (u_int64)U_INT32_MAX / HECTONANOSECONDS);	\
+} while (FALSE)
 
 
 /*
@@ -868,7 +870,7 @@ reset_winnt_time(void)
 		GetSystemTime(&st);
 		SetSystemTime(&st);
 		NLOG(NLOG_SYSEVENT | NLOG_CLOCKINFO) {
-			msyslog(LOG_NOTICE, "system is shutting down, CMOS time reset.");
+		msyslog(LOG_NOTICE, "system is shutting down, CMOS time reset.");
 		}
 	 }
 }
@@ -1178,7 +1180,7 @@ lock_thread_to_processor(HANDLE thread)
 		cputext = getenv("NTPD_CPU");
 		if (cputext) {
 			cpu = (unsigned int) atoi(cputext);
-			cpu = min((8 * sizeof(DWORD_PTR)), cpu);
+			cpu = min(cpu, 8 * sizeof(ProcessAffinityMask));
 		}
 
 		/* 
@@ -1189,26 +1191,33 @@ lock_thread_to_processor(HANDLE thread)
 
 		ThreadAffinityMask = (0 == cpu) ? 0 : (1 << (cpu - 1));
 
-		if (ThreadAffinityMask && 
-			!(ThreadAffinityMask & ProcessAffinityMask)) 
-
-			DPRINTF(1, ("Selected CPU %u (mask %x) is outside "
-					"process mask %x, using all CPUs.\n",
-					cpu, ThreadAffinityMask, 
-					ProcessAffinityMask));
-		else
-			DPRINTF(1, ("Wiring to processor %u (0 means all) "
-					"affinity mask %x\n",	
-					cpu, ThreadAffinityMask));
-
+		if (   ThreadAffinityMask != 0
+		    && 0 == (ThreadAffinityMask & ProcessAffinityMask)) {
+			/* 
+			 * Affinity masks are either 32 or 64 bits, depending
+			 * on platform.  Cast to u_int64 so the format string
+			 * matches in either case.
+			 */
+			msyslog(LOG_ERR,
+				"Selected CPU %u (mask %llx) is outside "
+				"process mask %llx, using all CPUs.\n",
+				cpu, (u_int64)ThreadAffinityMask,
+				(u_int64)ProcessAffinityMask);
+		} else {
+			msyslog(LOG_ERR,
+				"Wiring to processor %u (0 means all) "
+				"affinity mask %llx\n",
+				cpu, (u_int64)ThreadAffinityMask);
+		}
 		ThreadAffinityMask &= ProcessAffinityMask;
 	}
 
-	if (ThreadAffinityMask && 
-	    !SetThreadAffinityMask(thread, ThreadAffinityMask))
+	if (   ThreadAffinityMask
+	    && 0 == SetThreadAffinityMask(thread, ThreadAffinityMask)) {
 		msyslog(LOG_ERR, 
-			"Unable to wire thread to mask %x: %m", 
-			ThreadAffinityMask);
+			"Unable to wire thread to mask %llx: %m", 
+			(u_int64)ThreadAffinityMask);
+	}
 }
 
 
@@ -1276,11 +1285,7 @@ ntp_timestamp_from_counter(
 	}
 
 	/* convert from 100ns units to NTP fixed point format */
-
-	InterpTimestamp -= FILETIME_1970;
-	result->l_ui = JAN_1970 + (u_int32)(InterpTimestamp / HECTONANOSECONDS);
-	result->l_uf = (u_int32)((InterpTimestamp % HECTONANOSECONDS) *
-				 (ULONGLONG)FRAC / HECTONANOSECONDS);
+	FILETIMETOLFP(result, InterpTimestamp);
 }
 #endif  /* HAVE_PPSAPI */
 
@@ -1718,3 +1723,215 @@ interp_time(
 
 	return latest_time;
 }
+
+
+/*
+ * Windows requires a registry setting on each network adapter to enable
+ * SO_TIMESTAMP kernel-mode receive timestamps.  When the OS supports
+ * it but it is not enabled on a particular adapter, the timestamp
+ * is reported as zero.  In that case, we iterate over installed adapters
+ * and for those which have not previously had receive timestamps enabled,
+ * we enable them and record the values set by ntpd.  If the setting is
+ * present but differs, we respect that presumed administrator change.
+ * If in the future we enable transmit timestamping in the kernel as well,
+ * we will be able to change the setting and our record as well, without
+ * stepping on administrator changes.  Transmit timestamping is trickier
+ * as it requires polling for the timestamps, as opposed to retrieving
+ * as part of the WSARecvMsg() that retrieves the packet.
+ * See also:
+ * https://learn.microsoft.com/en-us/windows/win32/winsock/winsock-timestamping
+ * https://learn.microsoft.com/en-us/windows/win32/iphlp/packet-timestamping
+ * https://www.powershellgallery.com/packages/SoftwareTimestamping/1.0
+ * Note we are so far only using software timestamps.  Some network adapters
+ * support hardware receive and/or transmit timestamps, particularly for PTP.
+ * SoftwareTimestampSettings values:
+ *	1 - All Rx
+ *	2 - All Tx
+ *	3 - All Rx & All Tx
+ *	4 - Selective Tx
+ *	5 - All Rx & Selective Tx
+ * Given we only use receive timestamps for now, we set to 1 but will work as
+ * well with 3 or 5.
+ * This function is invoked if --enable-udp-timestamps is used.  The return
+ * value is used as the ntpd exit code.  The registry keys involved require
+ * Administrators group membership to modify.
+ */
+int
+enable_udp_receive_timestamps(void)
+{
+	const char	root_key_path[] =
+				"SYSTEM\\CurrentControlSet\\Control\\Class"
+				"\\{4d36e972-e325-11ce-bfc1-08002be10318}";
+	LSTATUS		rc;
+	HKEY		nics_root;
+	DWORD		subkey_index;
+	DWORD		cch_subkey_name;
+	char		subkey_name[MAX_KEY_NAME_LEN];
+	HKEY		nic_key;
+	size_t		key_path_len;
+	char *		nic_key_path;
+	bool		changed;
+	const DWORD	impossible_value = 0x4bc00123;	/* DLM--123 */
+	DWORD		value_after;
+	u_int		examined, enabled, already_enabled, already_disabled;
+	u_int		error_count;
+
+	nic_key_path = NULL;
+	examined = enabled = already_enabled = already_disabled = 0;
+	error_count = 0;
+	rc = RegOpenKey(HKEY_LOCAL_MACHINE, root_key_path, &nics_root);
+	if (ERROR_SUCCESS != rc) {
+		SetLastError(rc);
+		msyslog(LOG_ERR,
+			"Unable to open registry key for net adapters"
+			" HKLM\\%s: %m", root_key_path);
+		return EX_NOPERM;
+	}
+	
+	for (subkey_index = 0; ERROR_SUCCESS == rc; ++subkey_index) {
+		cch_subkey_name = COUNTOF(subkey_name);
+		rc = RegEnumKeyEx(nics_root, subkey_index, subkey_name,
+				  &cch_subkey_name, NULL, NULL, NULL, NULL);
+		if (ERROR_SUCCESS == rc) {
+			/*
+			 * Adapter subkey names are 4-digit decimal numbers.
+			 */
+			if (   4 != cch_subkey_name
+			    || 4 != strspn(subkey_name, "0123456789")) {
+				DPRINTF(1, ("Skipping non - adapter subkey % s\n",
+					    subkey_name));
+				continue;
+			}
+			rc = RegOpenKey(nics_root, subkey_name, &nic_key);
+			if (ERROR_SUCCESS != rc) {
+				msyslog(LOG_ERR,
+					"Cannot open adapter subkey %s: %s",
+					subkey_name, FormatError(rc));
+				continue;
+			}
+			++examined;
+			key_path_len = 5	/* "HKLM\\" */
+				     + strlen(root_key_path) + 1
+				     + 1	/* backslash */
+				     + strlen(subkey_name) + 1;
+			nic_key_path = erealloc(nic_key_path, key_path_len);
+			snprintf(nic_key_path, key_path_len,
+				"HKLM\\%s\\%s", root_key_path, subkey_name);
+			value_after = impossible_value;
+			changed = enable_one_udp_timestamp(nic_key,
+							   nic_key_path,
+							   &value_after);
+			if (changed) {
+				++enabled;
+			} else {
+				if (impossible_value == value_after) {
+					++error_count;
+				} else if (   1 == value_after
+					   || 3 == value_after
+					   || 4 == value_after) {
+					++already_enabled;
+				} else {
+					++already_disabled;
+				}
+			}
+			RegCloseKey(nic_key);
+		}
+	}
+	free(nic_key_path);
+	RegCloseKey(nics_root);
+	msyslog(LOG_INFO,
+		"UDP receive timestamps: examined %u adapters,"
+		" enabled %u, already enabled %u, already disabled %u.",
+		examined, enabled, already_enabled, already_disabled);
+	if (error_count > 0) {
+		msyslog(LOG_ERR,
+			"%u errors encountered modifying adapter keys under"
+			" HKLM\\%s", error_count, root_key_path);
+		msyslog(LOG_INFO, "Are you running %s as an Administrator?",
+			progname);
+		return EX_NOPERM;
+	}
+	msyslog(LOG_INFO,
+		"Registry values are REG_DWORD SoftwareTimestampSettings"
+		" on numeric subkeys of HKEY_LOCAL_MACHINE\\SYSTEM\\"
+		"CurrentControlSet\\Control\\Class\\"
+		"{4d36e972-e325-11ce-bfc1-08002be10318}");
+	msyslog(LOG_INFO, "Restart system or disable then enable each adapter and restart ntpd.");
+
+	return EX_OK;
+}
+
+
+bool
+enable_one_udp_timestamp(
+	HANDLE		nic_key,
+	const char *	nic_key_path,
+	DWORD *		value_after
+	)
+{
+	const char	value_name[] =	"SoftwareTimestampSettings";
+	bool		value_present = false;
+	const char	from_ntpd_value_name[] =
+					"SoftwareTimestampSettingsFromNtpd";
+	bool		from_ntpd_present = false;
+	DWORD		value;
+	DWORD		value_size;
+	LSTATUS		rc;
+	DWORD		type;
+
+	value_size = sizeof(value);
+	rc = RegQueryValueExA(
+			nic_key,
+			value_name,
+			NULL,
+			&type,
+			(void*)&value,
+			&value_size);
+	if (ERROR_SUCCESS == rc) {
+		if (REG_DWORD != type || sizeof(value) != value_size) {
+			msyslog(LOG_ERR, "%s value %s is not REG_DWORD",
+				nic_key_path, value_name);
+			return false;
+		}
+		value_present = true;
+		*value_after = value;
+	}
+	if (value_present) {
+		/* respect administrator setting */
+		DPRINTF(2, ("%s %s = %u already configured\n",
+			    nic_key_path, value_name, value));
+		return false;
+	}
+	value = 1;
+	rc = RegSetValueExA(
+			nic_key,
+			value_name,
+			0,
+			REG_DWORD,
+			(void *)&value,
+			sizeof(value));
+	if (ERROR_SUCCESS != rc) {
+		msyslog(LOG_ERR,
+			"Cannot set %s value %s: %u %s",
+			nic_key_path, value_name, rc, FormatError(rc));
+		return false;
+	}
+	*value_after = value;
+	DPRINTF(2, ("Enabled UDP receive timestamps on adapter %s\n",
+		    nic_key_path));
+	/* record that ntpd set it for future use */
+	rc = RegSetValueEx(
+			nic_key,
+			from_ntpd_value_name,
+			0,
+			REG_DWORD,
+			(void *)&value,
+			sizeof(value));
+	if (ERROR_SUCCESS != rc) {
+		msyslog(LOG_ERR,
+			"Cannot set %s value %s: %s %s",
+			nic_key_path, from_ntpd_value_name, rc, FormatError(rc));
+	}
+	return true;
+}
+/* EOF nt_clockstuff.c */

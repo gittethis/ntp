@@ -835,49 +835,49 @@ access_control_command
 			restrict_node *rn;
 
 			rn = create_restrict_node($2, $3, $4, $5, FALSE,
-						  lex_current()->curpos.nline,
-						  lex_current()->curpos.ncol);
+						  lex_current()->curpos.nline);
 			APPEND_G_FIFO(cfgt.restrict_opts, rn);
 		}
 	|	T_Restrict T_Default res_ippeerlimit ac_flag_list
 		{
 			restrict_node *rn;
 
-			rn = create_restrict_node(NULL, NULL, $3, $4, FALSE,
-						  lex_current()->curpos.nline,
-						  lex_current()->curpos.ncol);
+			APPEND_G_FIFO($4, create_attr_ival($2, 1));
+			rn = create_restrict_node(
+				create_address_node(
+					estrdup(keyword($2)),
+					AF_UNSPEC),
+				NULL,
+				$3, $4, FALSE,
+				lex_current()->curpos.nline);
 			APPEND_G_FIFO(cfgt.restrict_opts, rn);
 		}
 	|	T_Restrict T_Ipv4_flag T_Default res_ippeerlimit ac_flag_list
 		{
 			restrict_node *rn;
 
+			APPEND_G_FIFO($5, create_attr_ival($3, 1));
 			rn = create_restrict_node(
 				create_address_node(
-					estrdup("0.0.0.0"),
+					estrdup("-4 default"),
 					AF_INET),
-				create_address_node(
-					estrdup("0.0.0.0"),
-					AF_INET),
+				NULL,
 				$4, $5, FALSE,
-				lex_current()->curpos.nline,
-				lex_current()->curpos.ncol);
+				lex_current()->curpos.nline);
 			APPEND_G_FIFO(cfgt.restrict_opts, rn);
 		}
 	|	T_Restrict T_Ipv6_flag T_Default res_ippeerlimit ac_flag_list
 		{
 			restrict_node *rn;
 
+			APPEND_G_FIFO($5, create_attr_ival($3, 1));
 			rn = create_restrict_node(
 				create_address_node(
-					estrdup("::"),
+					estrdup("-6 default"),
 					AF_INET6),
-				create_address_node(
-					estrdup("::"),
-					AF_INET6),
+				NULL,
 				$4, $5, FALSE,
-				lex_current()->curpos.nline,
-				lex_current()->curpos.ncol);
+				lex_current()->curpos.nline);
 			APPEND_G_FIFO(cfgt.restrict_opts, rn);
 		}
 	|	T_Restrict T_Source res_ippeerlimit ac_flag_list
@@ -886,8 +886,7 @@ access_control_command
 
 			APPEND_G_FIFO($4, create_attr_ival($2, 1));
 			rn = create_restrict_node(NULL, NULL, $3, $4, FALSE,
-						  lex_current()->curpos.nline,
-						  lex_current()->curpos.ncol);
+						  lex_current()->curpos.nline);
 			APPEND_G_FIFO(cfgt.restrict_opts, rn);
 		}
 	|	T_Delrestrict ip_address restrict_mask
@@ -895,8 +894,7 @@ access_control_command
 			restrict_node *	rn;
 
 			rn = create_restrict_node($2, $3, -1, NULL, TRUE,
-						  lex_current()->curpos.nline,
-						  lex_current()->curpos.ncol);
+						  lex_current()->curpos.nline);
 			APPEND_G_FIFO(cfgt.restrict_opts, rn);
 		}
 	|	T_Delrestrict T_Source ip_address
@@ -907,8 +905,7 @@ access_control_command
 			avf = NULL;
 			APPEND_G_FIFO(avf, create_attr_ival($2, 1));
 			rn = create_restrict_node($3, NULL, -1, avf, TRUE,
-						  lex_current()->curpos.nline,
-						  lex_current()->curpos.ncol);
+						  lex_current()->curpos.nline);
 			APPEND_G_FIFO(cfgt.restrict_opts, rn);
 		}
 	;
@@ -1422,10 +1419,10 @@ drift_parm
 				APPEND_G_FIFO(cfgt.vars, av);
 				av = create_attr_dval(T_WanderThreshold, $2);
 				APPEND_G_FIFO(cfgt.vars, av);
-			msyslog(LOG_WARNING,
-				"'driftfile FILENAME WanderValue' is deprecated, "
-				"please use separate 'driftfile FILENAME' and "
-				"'nonvolatile WanderValue' lines instead.");
+				msyslog(LOG_WARNING,
+					"'driftfile FILENAME WanderValue' is deprecated, "
+					"please use separate 'driftfile FILENAME' and "
+					"'nonvolatile WanderValue' lines instead.");
 			} else {
 				YYFREE($1);
 				yyerror("driftfile remote configuration ignored");
@@ -1561,14 +1558,14 @@ interface_command
 		{
 			nic_rule_node *nrn;
 
-			nrn = create_nic_rule_node($3, NULL, $2);
+			nrn = create_nic_rule_node($1, $3, NULL, $2);
 			APPEND_G_FIFO(cfgt.nic_rules, nrn);
 		}
 	|	interface_nic nic_rule_action T_String
 		{
 			nic_rule_node *nrn;
 
-			nrn = create_nic_rule_node(0, $3, $2);
+			nrn = create_nic_rule_node($1, 0, $3, $2);
 			APPEND_G_FIFO(cfgt.nic_rules, nrn);
 		}
 	;
@@ -1888,3 +1885,4 @@ int main(int argc, char *argv[])
 	return 0;
 }
 #endif
+

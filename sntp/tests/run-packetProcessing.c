@@ -47,7 +47,7 @@ extern void test_RejectWrongResponseServerMode(void);
 extern void test_AcceptNoSentPacketBroadcastMode(void);
 extern void test_CorrectUnauthenticatedPacket(void);
 extern void test_CorrectAuthenticatedPacketMD5(void);
-extern void test_CorrectAuthenticatedPacketSHAKE128(void);
+extern void test_CorrectAuthenticatedPacketSHA256(void);
 extern void test_CorrectAuthenticatedPacketSHA1(void);
 extern void test_CorrectAuthenticatedPacketCMAC(void);
 
@@ -55,8 +55,10 @@ extern void test_CorrectAuthenticatedPacketCMAC(void);
 //=======Suite Setup=====
 static void suite_setup(void)
 {
+extern void init_lib(void);
 extern int change_iobufs(int);
 extern int change_logfile(const char*, int);
+init_lib();
 change_iobufs(1);
 change_logfile("stderr", 0);
 }
@@ -95,7 +97,7 @@ int main(int argc, char *argv[])
   RUN_TEST(test_AcceptNoSentPacketBroadcastMode, 34);
   RUN_TEST(test_CorrectUnauthenticatedPacket, 35);
   RUN_TEST(test_CorrectAuthenticatedPacketMD5, 36);
-  RUN_TEST(test_CorrectAuthenticatedPacketSHAKE128, 37);
+  RUN_TEST(test_CorrectAuthenticatedPacketSHA256, 37);
   RUN_TEST(test_CorrectAuthenticatedPacketSHA1, 38);
   RUN_TEST(test_CorrectAuthenticatedPacketCMAC, 39);
 

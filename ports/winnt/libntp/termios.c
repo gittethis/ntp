@@ -59,6 +59,7 @@ lookup_com_handle(
 {
 	size_t		tidx, hidx;
 	comhandles *	slot;
+
 	for (tidx = 0; tidx < num_comh; ++tidx) {
 		slot = tab_comh[tidx];
 		for (hidx = 0; hidx < slot->nhnd; ++hidx) {
@@ -77,11 +78,12 @@ lookup_com_handle(
  * entry is returned. In that case, the structure is set up with all
  * entries valid and *no* file handles yet.
  */
-static comhandles*
+static comhandles *
 insert_com_unit(
 	uint16_t unit
-)
+	)
 {
+	char		portname[16];
 	size_t		tidx;
 	comhandles *	slot;
 
@@ -93,15 +95,14 @@ insert_com_unit(
 	/* search failed. make sure we can add a new slot */
 	if (num_comh >= max_comh) {
 		/* round up to next multiple of 4 */
-		max_comh = (num_comh + 4) & ~(size_t)3;
+		max_comh = (num_comh + 4) & ~0x3;
 		tab_comh = erealloc(tab_comh, max_comh * sizeof(tab_comh[0]));
 	}
 
 	/* create a new slot and populate it. */
-	slot = emalloc_zero(sizeof(comhandles));
-	LIB_GETBUF(slot->comName);
-	snprintf(slot->comName, LIB_BUFLENGTH, "\\\\.\\COM%d", unit);
-	slot->comName = estrdup(slot->comName);
+	slot = emalloc_zero(sizeof(*slot));
+	snprintf(portname, sizeof(portname), "\\\\.\\COM%u", unit);
+	slot->comName = estrdup(portname);
 	slot->devCtx  = DevCtxAlloc();
 	slot->unit    = unit;
 
@@ -544,9 +545,9 @@ ioctl_tiocmset(
 	if (failed) {
 		errno = ENOTTY;
 		result = -1;
-	} else
+	} else {
 		result = 0;
-
+	}
 	return result;
 }
 

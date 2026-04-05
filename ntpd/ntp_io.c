@@ -105,35 +105,6 @@ struct nic_rule_tag {
  */
 nic_rule *nic_rule_list;
 
-
-#if defined(SO_BINTIME) && defined(SCM_BINTIME) && defined(CMSG_FIRSTHDR)
-#  define HAVE_PACKET_TIMESTAMP
-#  define HAVE_BINTIME
-#  ifdef BINTIME_CTLMSGBUF_SIZE
-#   define CMSG_BUFSIZE BINTIME_CTLMSGBUF_SIZE
-#  else
-#   define CMSG_BUFSIZE  1536 /* moderate default */
-#  endif
-#elif defined(SO_TIMESTAMPNS) && defined(SCM_TIMESTAMPNS) && defined(CMSG_FIRSTHDR)
-#  define HAVE_PACKET_TIMESTAMP
-#  define HAVE_TIMESTAMPNS
-#  ifdef TIMESTAMPNS_CTLMSGBUF_SIZE
-#   define CMSG_BUFSIZE TIMESTAMPNS_CTLMSGBUF_SIZE
-#  else
-#   define CMSG_BUFSIZE  1536 /* moderate default */
-#  endif
-#elif defined(SO_TIMESTAMP) && defined(SCM_TIMESTAMP) && defined(CMSG_FIRSTHDR)
-#  define HAVE_PACKET_TIMESTAMP
-#  define HAVE_TIMESTAMP
-#  ifdef TIMESTAMP_CTLMSGBUF_SIZE
-#   define CMSG_BUFSIZE TIMESTAMP_CTLMSGBUF_SIZE
-#  else
-#   define CMSG_BUFSIZE  1536 /* moderate default */
-#  endif
-#else
-/* fill in for old/other timestamp interfaces */
-#endif
-
 #if defined(SYS_WINNT)
 #include "win32_io.h"
 #include <isc/win32os.h>
@@ -225,8 +196,8 @@ static	isc_boolean_t	is_anycast		(sockaddr_u *,
  * Not all platforms support multicast
  */
 #ifdef MCAST
-static	isc_boolean_t	socket_multicast_enable	(endpt *, sockaddr_u *);
-static	isc_boolean_t	socket_multicast_disable(endpt *, sockaddr_u *);
+static	void	socket_multicast_enable(endpt *ep, sockaddr_u *mgroup);
+static	void	socket_multicast_disable(endpt *ep, sockaddr_u *mgroup);
 #endif
 
 #ifdef DEBUG
@@ -265,7 +236,6 @@ struct asyncio_reader {
 
 struct asyncio_reader *asyncio_reader_list;
 
-static void delete_asyncio_reader (struct asyncio_reader *);
 static struct asyncio_reader *new_asyncio_reader (void);
 static void add_asyncio_reader (struct asyncio_reader *, enum desc_type);
 static void remove_asyncio_reader (struct asyncio_reader *);
@@ -391,13 +361,13 @@ maintain_activefds(
 #endif	/* !HAVE_IO_COMPLETION_PORT */
 
 
-#ifdef DEBUG_TIMING
+# ifdef DEBUG_TIMING
 /*
  * collect timing information for various processing
  * paths. currently we only pass them on to the file
  * for later processing. this could also do histogram
  * based analysis in other to reduce the load (and skew)
- * dur to the file output
+ * due to the file output
  */
 void
 collect_timing(struct recvbuf *rb, const char *tag, int count, l_fp *dts)
@@ -595,20 +565,6 @@ new_asyncio_reader(void)
 	return reader;
 }
 
-/*
- * delete a reader
- */
-static void
-delete_asyncio_reader(
-	struct asyncio_reader *reader
-	)
-{
-	free(reader);
-}
-
-/*
- * add asynchio_reader
- */
 static void
 add_asyncio_reader(
 	struct asyncio_reader *	reader,
@@ -618,9 +574,6 @@ add_asyncio_reader(
 	add_fd_to_list(reader->fd, type);
 }
 
-/*
- * remove asyncio_reader
- */
 static void
 remove_asyncio_reader(
 	struct asyncio_reader *reader
@@ -635,6 +588,7 @@ remove_asyncio_reader(
 		close_and_delete_fd_from_list(reader->fd, NULL);
 	}
 	reader->fd = INVALID_SOCKET;
+	free(reader);
 }
 #endif /* !defined(HAVE_IO_COMPLETION_PORT) && defined(HAS_ROUTING_SOCKET) */
 
@@ -1011,7 +965,7 @@ create_wildcards(
 		wildif = new_interface(NULL);
 
 		strlcpy(wildif->name, "v6wildcard", sizeof(wildif->name));
-		memcpy(&wildif->sin, &wildaddr, sizeof(wildif->sin));
+		wildif->sin = wildaddr;
 		wildif->family = AF_INET6;
 		AF(&wildif->mask) = AF_INET6;
 		SET_ONESMASK(&wildif->mask);
@@ -1043,6 +997,7 @@ create_wildcards(
 	v4wild = ipv4_works;
 	if (v4wild) {
 		/* set wildaddr to the v4 wildcard address 0.0.0.0 */
+		ZERO(wildaddr);
 		AF(&wildaddr) = AF_INET;
 		SET_ADDR4N(&wildaddr, INADDR_ANY);
 		SET_PORT(&wildaddr, port);
@@ -1055,7 +1010,7 @@ create_wildcards(
 		wildif = new_interface(NULL);
 
 		strlcpy(wildif->name, "v4wildcard", sizeof(wildif->name));
-		memcpy(&wildif->sin, &wildaddr, sizeof(wildif->sin));
+		wildif->sin = wildaddr;
 		wildif->family = AF_INET;
 		AF(&wildif->mask) = AF_INET;
 		SET_ONESMASK(&wildif->mask);
@@ -1065,6 +1020,8 @@ create_wildcards(
 #if defined(MCAST)
 		/*
 		 * enable multicast reception on the broadcast socket
+		 * 
+		 * DLH: Does this block do anything?  We don't bind a socket.
 		 */
 		AF(&wildif->bcast) = AF_INET;
 		SET_ADDR4N(&wildif->bcast, INADDR_ANY);
@@ -1186,16 +1143,17 @@ interface_action(
 
 		case MATCH_ALL:
 			/* loopback and wildcard excluded from "all" */
-			if (isloopback || iswildcard)
+			if (isloopback || iswildcard) {
 				break;
-			DPRINTF(4, ("nic all %s\n",
-			    action_text(rule->action)));
+			}
+			DPRINTF(4, ("nic all %s\n", 
+				    action_text(rule->action)));
 			return rule->action;
 
 		case MATCH_IPV4:
 			if (IS_IPV4(if_addr)) {
 				DPRINTF(4, ("nic ipv4 %s\n",
-				    action_text(rule->action)));
+					    action_text(rule->action)));
 				return rule->action;
 			}
 			break;
@@ -1203,7 +1161,7 @@ interface_action(
 		case MATCH_IPV6:
 			if (IS_IPV6(if_addr)) {
 				DPRINTF(4, ("nic ipv6 %s\n",
-				    action_text(rule->action)));
+					    action_text(rule->action)));
 				return rule->action;
 			}
 			break;
@@ -1211,7 +1169,7 @@ interface_action(
 		case MATCH_WILDCARD:
 			if (iswildcard) {
 				DPRINTF(4, ("nic wildcard %s\n",
-				    action_text(rule->action)));
+					    action_text(rule->action)));
 				return rule->action;
 			}
 			break;
@@ -1221,17 +1179,21 @@ interface_action(
 				if (addr_eqprefix(if_addr, &rule->addr,
 						  rule->prefixlen)) {
 
-					DPRINTF(4, ("subnet address match - %s\n",
+					DPRINTF(4,
+					   ("prefix match %s/%d - %s\n",
+					    stoa(&rule->addr),
+					    rule->prefixlen,
 					    action_text(rule->action)));
 					return rule->action;
 				}
-			} else
+			} else {
 				if (SOCK_EQ(if_addr, &rule->addr)) {
 
 					DPRINTF(4, ("address match - %s\n",
-					    action_text(rule->action)));
+						action_text(rule->action)));
 					return rule->action;
 				}
+			}
 			break;
 
 		case MATCH_IFNAME:
@@ -1380,25 +1342,25 @@ refresh_interface(
 	)
 {
 #ifdef  OS_MISSES_SPECIFIC_ROUTE_UPDATES
-	if (iface->fd != INVALID_SOCKET) {
-		int bcast = (iface->flags & INT_BCASTXMIT) != 0;
+	if (ep->fd != INVALID_SOCKET) {
+		int bcast = (ep->flags & INT_BCASTXMIT) != 0;
 		/* as we forcibly close() the socket remove the
 		   broadcast permission indication */
 		if (bcast)
-			socket_broadcast_disable(iface, &iface->sin);
+			socket_broadcast_disable(ep, &ep->sin);
 
-		close_and_delete_fd_from_list(iface->fd);
+		close_and_delete_fd_from_list(ep->fd);
 
 		/* create new socket picking up a new first hop binding
 		   at connect() time */
-		iface->fd = open_socket(&iface->sin,
-					    bcast, 0, iface);
+		ep->fd = open_socket(&ep->sin,
+					    bcast, 0, ep);
 		 /*
 		  * reset TTL indication so TTL is is set again
 		  * next time around
 		  */
-		iface->last_ttl = 0;
-		return (iface->fd != INVALID_SOCKET);
+		ep->last_ttl = 0;
+		return (ep->fd != INVALID_SOCKET);
 	} else
 		return 0;	/* invalid sockets are not refreshable */
 #else /* !OS_MISSES_SPECIFIC_ROUTE_UPDATES */
@@ -1485,9 +1447,7 @@ is_linklocal(
 
 	if (IS_IPV6(psau)) {
 		p6addr = &psau->sa6.sin6_addr;
-		if (   IN6_IS_ADDR_LINKLOCAL(p6addr)
-		    || IN6_IS_ADDR_SITELOCAL(p6addr)) {
-
+		if (IN6_IS_ADDR_LINKLOCAL(p6addr)) {
 			return TRUE;
 		}
 	} else if (IS_IPV4(psau)) {
@@ -1636,6 +1596,29 @@ is_valid(
 	}
 }
 
+
+/* rename an endpt for an address used on multiple local interfaces */
+static void
+rename_multi_iface_endpt(
+	endpt *		target,
+	endpt * const	other
+	)
+{
+	char new_name[sizeof(target->name)];
+	int  rc;
+
+	rc = snprintf(new_name, sizeof(new_name), "%s,%s",
+		      target->name, other->name);
+	if (rc < sizeof(new_name)) {
+		strlcpy(target->name, new_name, sizeof(target->name));
+	} else {
+		msyslog(LOG_INFO, "%s on %s & %s -> *multiple*",
+		        stoa(&target->sin), target->name, other->name);
+		strlcpy(target->name, "*multiple*", sizeof(target->name));
+	}
+}
+
+
 /*
  * update_interface strategy
  *
@@ -1760,13 +1743,13 @@ update_interfaces(
 		case ACTION_LISTEN:
 			DPRINTF(4, ("listen interface %s (%s) - by nic rules\n",
 				    enumep.name, stoa(&enumep.sin)));
-			enumep.ignore_packets = ISC_FALSE;
+			enumep.ignore_packets = FALSE;
 			break;
 
 		case ACTION_DROP:
 			DPRINTF(4, ("drop on interface %s (%s) - by nic rules\n",
 				    enumep.name, stoa(&enumep.sin)));
-			enumep.ignore_packets = ISC_TRUE;
+			enumep.ignore_packets = TRUE;
 			break;
 		}
 
@@ -1808,14 +1791,21 @@ update_interfaces(
 			}
 		}
 		/*
-		 * map to local *address* in order to map all duplicate
-		 * interfaces to an endpt structure with the appropriate
-		 * socket.  Our name space is (ip-address), NOT
-		 * (interface name, ip-address).
+		 * Map to local *address* in order to use a single endpt
+		 * even if a local address appears on two or more network
+		 * interfaces.
 		 */
 		ep = getinterface(&enumep.sin, INT_WILDCARD);
 
-		if (NULL == ep) {
+		if (NULL != ep) {
+			if (!refresh_interface(ep)) {
+				/*
+				 * This endpt will be deleted in phase 2
+				 * because it will not be marked current.
+				 */
+				continue;
+			}
+		} else {
 			ep = emalloc(sizeof(*ep));
 			memcpy(ep, &enumep, sizeof(*ep));
 			if (NULL != newaddrs_tail) {
@@ -1827,39 +1817,23 @@ update_interfaces(
 			continue;
 		}
 
-		if (!refresh_interface(ep)) {
+		if (ep->phase == sys_interphase) {
 			/*
-			 * Refreshing failed, we will delete the endpt
-			 * in phase 2 because it was not marked current.
-			 * We can bind to the address as the refresh
-			 * code already closed the endpt's socket.
-			*/
-			continue;
-		}
-		/*
-		 * found existing and up to date interface -
-		 * mark present.
-		 */
-		if (ep->phase != sys_interphase) {
+			 * The local address is already bound because it is
+			 * configured on more than one network interface.
+			 * Change the endpt name to reflect that.
+			 */
+			rename_multi_iface_endpt(ep, &enumep);
+		} else {
 			/*
-			 * On a new round we reset the name so
-			 * the interface name shows up again if
-			 * this address is no longer shared.
-			 * We reset ignore_packets from the
-			 * new prototype to respect any runtime
-			 * changes to the nic rules.
+			 * On a new round we reset the name so the
+			 * interface name shows up again if this address
+			 * is no longer shared.  We reset ignore_packets
+			 * from the new prototype to respect any runtime
+			 * changes to the nic AKA listen rules.
 			 */
 			strlcpy(ep->name, enumep.name, sizeof(ep->name));
 			ep->ignore_packets = enumep.ignore_packets;
-		} else {
-			/*
-			 * DLH: else branch might be dead code from
-			 * when both address and name were compared.
-			 */
-			msyslog(LOG_INFO, "%s on %u %s -> *multiple*",
-				stoa(&ep->sin), ep->ifnum, ep->name);
-			/* name collision - rename interface */
-			strlcpy(ep->name, "*multiple*", sizeof(ep->name));
 		}
 
 		DPRINT_INTERFACE(4, (ep, "updating ", " present\n"));
@@ -1888,6 +1862,10 @@ update_interfaces(
 			ep->ignore_packets = TRUE;
 		}
 
+		/*
+		 * found existing and up to date interface -
+		 * mark present.
+		 */
 		ep->phase = sys_interphase;
 
 		ifi.action = IFS_EXISTS;
@@ -1920,22 +1898,36 @@ update_interfaces(
 		ep2->elink = NULL;
 		ep = create_interface(port, ep2);
 		if (ep != NULL) {
-			ifi.action = IFS_CREATED;
-			ifi.ep = ep;
 			if (receiver != NULL) {
+				ifi.action = IFS_CREATED;
+				ifi.ep = ep;
 				(*receiver)(data, &ifi);
 			}
 			new_interface_found = TRUE;
 			DPRINT_INTERFACE(3,
-				(ep2, "updating ", " new - created\n"));
+				(ep, "updating ", " new - created\n"));
 		} else {
-			DPRINT_INTERFACE(3,
-				(ep2, "updating ", " new - FAILED"));
-
-			msyslog(LOG_ERR,
-				"cannot bind address %s",
-				stoa(&ep2->sin));
+			/*
+			 * The only reason create_interface() returns NULL is
+			 * failure to bind the local address.  If there are
+			 * two network interfaces which both use the same
+			 * address, we can be here because we've just bound
+			 * that address earlier in this newaddrs loop.  In
+			 * that case the failure to bind is expected and not
+			 * an error, as evidenced by the local address
+			 * already appearing in our list of bound endpoints.
+			 */
+			ep = getinterface(&ep2->sin, INT_WILDCARD);
+			if (NULL != ep) {
+				rename_multi_iface_endpt(ep2, ep);
+			} else {
+				DPRINT_INTERFACE(3,
+					(ep2, "updating ", " new - FAILED"));
+				msyslog(LOG_ERR, "unable to listen on %s %s",
+					ep2->name, sptoa(&ep2->sin));
+			}
 		}
+		/* we are done with the prototype ep2 either way */
 		free(ep2);
 	}
 
@@ -1961,9 +1953,9 @@ update_interfaces(
 				     "GONE - deleting\n"));
 		remove_interface(ep);
 
-		ifi.action = IFS_DELETED;
-		ifi.ep = ep;
 		if (receiver != NULL) {
+			ifi.action = IFS_DELETED;
+			ifi.ep = ep;
 			(*receiver)(data, &ifi);
 		}
 		/* disconnect peers from deleted endpt. */
@@ -2007,12 +1999,7 @@ update_interfaces(
 		     entry != NULL;
 		     entry = entry->link) {
 			if (entry->ep == ep) {
-				if (socket_multicast_enable(ep, &entry->addr)) {
-					msyslog(LOG_INFO,
-						"Joined %s socket to multicast group %s",
-						stoa(&ep->sin),
-						stoa(&entry->addr));
-				}
+				socket_multicast_enable(ep, &entry->addr);
 				break;
 			}
 		}
@@ -2094,10 +2081,10 @@ create_interface(
 
 	if (INVALID_SOCKET == iface->fd
 	    && INVALID_SOCKET == iface->bfd) {
-		msyslog(LOG_ERR, "unable to create socket on %s (%d) for %s",
+		DPRINTF(2, ("unable to create socket on %s (%d) for %s",
 			iface->name,
 			iface->ifnum,
-			sptoa(&iface->sin));
+			sptoa(&iface->sin)));
 		delete_interface(iface);
 		return NULL;
 	}
@@ -2139,20 +2126,11 @@ create_interface(
 		     entry != NULL;
 		     entry = next_entry) {
 			next_entry = entry->link;
-			if (AF(&iface->sin) != AF(&entry->addr) ||
-			    !IS_MCAST(&entry->addr))
+			if (   AF(&iface->sin) != AF(&entry->addr)
+			    || !IS_MCAST(&entry->addr)) {
 				continue;
-			if (socket_multicast_enable(iface,
-						    &entry->addr))
-				msyslog(LOG_INFO,
-					"Joined %s socket to multicast group %s",
-					stoa(&iface->sin),
-					stoa(&entry->addr));
-			else
-				msyslog(LOG_ERR,
-					"Failed to join %s socket to multicast group %s",
-					stoa(&iface->sin),
-					stoa(&entry->addr));
+			}
+			socket_multicast_enable(iface, &entry->addr);
 		}
 	}
 #endif	/* MCAST && MCAST_NONEWSOCKET */
@@ -2374,20 +2352,20 @@ socket_broadcast_enable(
  */
 static isc_boolean_t
 socket_broadcast_disable(
-	endpt *	iface,
+	endpt *	ep,
 	sockaddr_u *		baddr
 	)
 {
 #ifdef SO_BROADCAST
 	int off = 0;	/* This seems to be OK as an int */
 
-	if (IS_IPV4(baddr) && setsockopt(iface->fd, SOL_SOCKET,
+	if (IS_IPV4(baddr) && setsockopt(ep->fd, SOL_SOCKET,
 	    SO_BROADCAST, (void *)&off, sizeof(off)))
 		msyslog(LOG_ERR,
 			"setsockopt(SO_BROADCAST) disable failure on address %s: %m",
 			stoa(baddr));
 
-	iface->flags &= ~INT_BCASTXMIT;
+	ep->flags &= ~INT_BCASTXMIT;
 	return ISC_TRUE;
 #else
 	return ISC_FALSE;
@@ -2426,14 +2404,16 @@ addr_ismulticast(
 }
 
 /*
- * Multicast servers need to set the appropriate Multicast interface
- * socket option in order for it to know which interface to use for
- * send the multicast packet.
+ * Disable loopback for multicast on a given endpt using IP_MULTICAST_LOOP.
+ * Note there is a different implementation of this option on Windows IPv4
+ * compared to POSIX systems.  On Windows this option must be disabled
+ * on the receiving socket, on POSIX, the sending socket:
+ * https://learn.microsoft.com/en-us/windows/win32/winsock/ipproto-ip-socket-options#:~:text=not%20compatible%20with%20the%20POSIX
+ * By contrast, it appears the Windows IPv6 stack follows the POSIX model.
  */
 void
-enable_multicast_if(
-	endpt *		iface,
-	sockaddr_u *	maddr
+mcast_loopback_off(
+	endpt *		ep
 	)
 {
 #ifdef MCAST
@@ -2444,24 +2424,18 @@ enable_multicast_if(
 	u_int off6 = 0;
 #endif
 
-	REQUIRE(AF(maddr) == AF(&iface->sin));
-
-	switch (AF(&iface->sin)) {
+	switch (AF(&ep->sin)) {
 
 	case AF_INET:
 #ifdef IP_MULTICAST_LOOP
-		/*
-		 * Don't send back to itself, but allow failure to set
-		 */
-		if (setsockopt(iface->fd, IPPROTO_IP,
+		if (setsockopt(ep->fd, IPPROTO_IP,
 			       IP_MULTICAST_LOOP,
 			       (void *)&off,
 			       sizeof(off))) {
 
 			msyslog(LOG_ERR,
-				"setsockopt IP_MULTICAST_LOOP failed: %m on socket %d, addr %s for multicast address %s",
-				iface->fd, stoa(&iface->sin),
-				stoa(maddr));
+				"setsockopt IP_MULTICAST_LOOP %s failed: %m",
+				stoa(&ep->sin));
 		}
 #endif
 		break;
@@ -2472,113 +2446,84 @@ enable_multicast_if(
 		/*
 		 * Don't send back to itself, but allow failure to set
 		 */
-		if (setsockopt(iface->fd, IPPROTO_IPV6,
+		if (setsockopt(ep->fd, IPPROTO_IPV6,
 			       IPV6_MULTICAST_LOOP,
 			       (void *) &off6, sizeof(off6))) {
 
 			msyslog(LOG_ERR,
-				"setsockopt IPV6_MULTICAST_LOOP failed: %m on socket %d, addr %s for multicast address %s",
-				iface->fd, stoa(&iface->sin),
-				stoa(maddr));
+				"setsockopt IPV6_MULTICAST_LOOP %s failed: %m",
+				stoa(&ep->sin));
 		}
 #endif
 		break;
-#else
-		return;
 #endif	/* INCLUDE_IPV6_MULTICAST_SUPPORT */
 	}
-	return;
 #endif
 }
 
+
 /*
- * Add a multicast address to a given socket
- * The socket is in the ep_list all we need to do is enable
- * multicasting. It is not this function's job to select the socket
+ * Add a local address to a multicast group (address).
  */
 #if defined(MCAST)
-static isc_boolean_t
+static void
 socket_multicast_enable(
-	endpt *		iface,
-	sockaddr_u *	maddr
+	endpt *		ep,
+	sockaddr_u *	mgroup
 	)
 {
 	struct ip_mreq		mreq;
 # ifdef INCLUDE_IPV6_MULTICAST_SUPPORT
 	struct ipv6_mreq	mreq6;
 # endif
-	switch (AF(maddr)) {
+	switch (AF(mgroup)) {
 
 	case AF_INET:
 		ZERO(mreq);
-		mreq.imr_multiaddr = SOCK_ADDR4(maddr);
+		mreq.imr_multiaddr = SOCK_ADDR4(mgroup);
 		mreq.imr_interface.s_addr = htonl(INADDR_ANY);
-		if (setsockopt(iface->fd,
-			       IPPROTO_IP,
-			       IP_ADD_MEMBERSHIP,
-			       (void *)&mreq,
-			       sizeof(mreq))) {
-			DPRINTF(2, (
-				"setsockopt IP_ADD_MEMBERSHIP failed: %m on socket %d, addr %s for %x / %x (%s)",
-				iface->fd, stoa(&iface->sin),
-				mreq.imr_multiaddr.s_addr,
-				mreq.imr_interface.s_addr,
-				stoa(maddr)));
-			return ISC_FALSE;
+
+		if (setsockopt(ep->fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
+			       (void *)&mreq, sizeof(mreq))) {
+			goto fail;
 		}
-		DPRINTF(4, ("Added IPv4 multicast membership on socket %d, addr %s for %x / %x (%s)\n",
-			    iface->fd, stoa(&iface->sin),
-			    mreq.imr_multiaddr.s_addr,
-			    mreq.imr_interface.s_addr, stoa(maddr)));
 		break;
 
 	case AF_INET6:
-# ifdef INCLUDE_IPV6_MULTICAST_SUPPORT
-		/*
-		 * Enable reception of multicast packets.
-		 * If the address is link-local we can get the
-		 * interface index from the scope id. Don't do this
-		 * for other types of multicast addresses. For now let
-		 * the kernel figure it out.
-		 */
-		ZERO(mreq6);
-		mreq6.ipv6mr_multiaddr = SOCK_ADDR6(maddr);
-		mreq6.ipv6mr_interface = iface->ifindex;
-
-		if (setsockopt(iface->fd, IPPROTO_IPV6,
-			       IPV6_JOIN_GROUP, (void *)&mreq6,
-			       sizeof(mreq6))) {
-			DPRINTF(2, (
-				"setsockopt IPV6_JOIN_GROUP failed: %m on socket %d, addr %s for interface %u (%s)",
-				iface->fd, stoa(&iface->sin),
-				mreq6.ipv6mr_interface, stoa(maddr)));
-			return ISC_FALSE;
-		}
-		DPRINTF(4, ("Added IPv6 multicast group on socket %d, addr %s for interface %u (%s)\n",
-			    iface->fd, stoa(&iface->sin),
-			    mreq6.ipv6mr_interface, stoa(maddr)));
+# ifndef INCLUDE_IPV6_MULTICAST_SUPPORT
+		return;
 # else
-		return ISC_FALSE;
-# endif	/* INCLUDE_IPV6_MULTICAST_SUPPORT */
-	}
-	iface->flags |= INT_MCASTOPEN;
-	iface->num_mcast++;
+		mreq6.ipv6mr_multiaddr = SOCK_ADDR6(mgroup);
+		mreq6.ipv6mr_interface = ep->ifindex;
 
-	return ISC_TRUE;
+		if (setsockopt(ep->fd, IPPROTO_IPV6, IPV6_JOIN_GROUP,
+			       (void *)&mreq6, sizeof(mreq6))) {
+			goto fail;
+		}
+		break;
+# endif
+	}
+	ep->flags |= INT_MCASTOPEN;
+	ep->num_mcast++;
+	msyslog(LOG_INFO, "Joined %s socket to multicast group %s",
+		stoa(&ep->sin), stoa(mgroup));
+
+	return;
+fail:
+	msyslog(LOG_ERR, "Adding %s to mcast group %s failed: %m",
+		stoa(&ep->sin), stoa(mgroup));
 }
 #endif	/* MCAST */
 
 
 /*
- * Remove a multicast address from a given socket
- * The socket is in the ep_list all we need to do is disable
- * multicasting. It is not this function's job to select the socket
+ * Remove a local address from a multicast group.
  */
 #ifdef MCAST
-static isc_boolean_t
+static void
 socket_multicast_disable(
-	endpt *	iface,
-	sockaddr_u *		maddr
+	endpt *		ep,
+	sockaddr_u *	mgroup
 	)
 {
 # ifdef INCLUDE_IPV6_MULTICAST_SUPPORT
@@ -2586,64 +2531,45 @@ socket_multicast_disable(
 # endif
 	struct ip_mreq mreq;
 
-	if (find_addr_in_list(maddr) == NULL) {
-		DPRINTF(4, ("socket_multicast_disable(%s): not found\n",
-			    stoa(maddr)));
-		return ISC_TRUE;
+	if (NULL == find_addr_in_list(mgroup)) {
+		DPRINTF(4, ("%s(%s): not in list\n",
+			    __func__, stoa(mgroup)));
+		return;
 	}
 
-	switch (AF(maddr)) {
+	switch (AF(mgroup)) {
 
 	case AF_INET:
-		ZERO(mreq);
-		mreq.imr_multiaddr = SOCK_ADDR4(maddr);
-		mreq.imr_interface = SOCK_ADDR4(&iface->sin);
-		if (setsockopt(iface->fd, IPPROTO_IP,
-			       IP_DROP_MEMBERSHIP, (void *)&mreq,
-			       sizeof(mreq))) {
-
-			msyslog(LOG_ERR,
-				"setsockopt IP_DROP_MEMBERSHIP failed: %m on socket %d, addr %s for %x / %x (%s)",
-				iface->fd, stoa(&iface->sin),
-				SRCADR(maddr), SRCADR(&iface->sin),
-				stoa(maddr));
-			return ISC_FALSE;
+		mreq.imr_multiaddr = SOCK_ADDR4(mgroup);
+		mreq.imr_interface = SOCK_ADDR4(&ep->sin);
+		if (setsockopt(ep->fd, IPPROTO_IP, IP_DROP_MEMBERSHIP,
+			       (void *)&mreq, sizeof(mreq))) {
+			goto fail;
 		}
 		break;
 	case AF_INET6:
-# ifdef INCLUDE_IPV6_MULTICAST_SUPPORT
-		/*
-		 * Disable reception of multicast packets
-		 * If the address is link-local we can get the
-		 * interface index from the scope id.  Don't do this
-		 * for other types of multicast addresses. For now let
-		 * the kernel figure it out.
-		 */
-		ZERO(mreq6);
-		mreq6.ipv6mr_multiaddr = SOCK_ADDR6(maddr);
-		mreq6.ipv6mr_interface = iface->ifindex;
+# ifndef INCLUDE_IPV6_MULTICAST_SUPPORT
+		return;
+# else
+		mreq6.ipv6mr_multiaddr = SOCK_ADDR6(mgroup);
+		mreq6.ipv6mr_interface = ep->ifindex;
 
-		if (setsockopt(iface->fd, IPPROTO_IPV6,
-			       IPV6_LEAVE_GROUP, (void *)&mreq6,
-			       sizeof(mreq6))) {
-
-			msyslog(LOG_ERR,
-				"setsockopt IPV6_LEAVE_GROUP failure: %m on socket %d, addr %s for %d (%s)",
-				iface->fd, stoa(&iface->sin),
-				iface->ifindex, stoa(maddr));
-			return ISC_FALSE;
+		if (setsockopt(ep->fd, IPPROTO_IPV6, IPV6_LEAVE_GROUP,
+			       (void*)&mreq6, sizeof(mreq6))) {
+			goto fail;
 		}
 		break;
-# else
-		return ISC_FALSE;
 # endif	/* INCLUDE_IPV6_MULTICAST_SUPPORT */
 	}
 
-	iface->num_mcast--;
-	if (iface->num_mcast <= 0) {
-		iface->flags &= ~INT_MCASTOPEN;
+	ep->num_mcast--;
+	if (ep->num_mcast <= 0) {
+		ep->flags &= ~INT_MCASTOPEN;
 	}
-	return ISC_TRUE;
+	return;
+fail:
+	msyslog(LOG_ERR, "Removing %s from mcast group %s failed: %m",
+		stoa(&ep->sin), stoa(mgroup));
 }
 #endif	/* MCAST */
 
@@ -2876,11 +2802,7 @@ io_multicast_add(
 			continue;
 		one_ep = ep;
 # endif	/* MULTICAST_NONEWSOCKET */
-		if (socket_multicast_enable(ep, addr))
-			msyslog(LOG_INFO,
-				"Joined %s socket to multicast group %s",
-				stoa(&ep->sin),
-				stoa(addr));
+		socket_multicast_enable(ep, addr);
 	}
 
 	add_addr_to_list(addr, one_ep);
@@ -2889,7 +2811,6 @@ io_multicast_add(
 		"Can not add multicast address %s: no multicast support",
 		stoa(addr));
 #endif
-	return;
 }
 
 
@@ -2917,9 +2838,9 @@ io_multicast_del(
 	 * Disable reception of multicast packets
 	 */
 	while ((iface = find_flagged_addr_in_list(addr, INT_MCASTOPEN))
-	       != NULL)
+	       != NULL) {
 		socket_multicast_disable(iface, addr);
-
+	}
 	delete_addr_from_list(addr);
 
 #else /* not MCAST */
@@ -2945,11 +2866,14 @@ open_socket(
 	SOCKET	fd;
 	int	errval;
 	/*
-	 * int is OK for REUSEADR per
+	 * int is OK for REUSEADDR per
 	 * http://www.kohala.com/start/mcast.api.txt
 	 */
 	int	on = 1;
 	int	off = 0;
+#ifdef OS_NEEDS_REUSEADDR_FOR_IFADDRBIND
+	int	saved_errno;
+#endif
 
 	if (IS_IPV6(addr) && !ipv6_works)
 		return INVALID_SOCKET;
@@ -2967,7 +2891,6 @@ open_socket(
 		    errval == EPFNOSUPPORT)
 			return (INVALID_SOCKET);
 
-		errno = errval;
 		msyslog(LOG_ERR,
 			"unexpected socket() error %m code %d (not EPROTONOSUPPORT nor EAFNOSUPPORT nor EPFNOSUPPORT) - exiting",
 			errno);
@@ -3065,8 +2988,9 @@ open_socket(
 	 * addresses if a wildcard address already bound
 	 * to the port and SO_REUSEADDR is not set
 	 */
-	if (!is_wildcard_addr(addr))
+	if (!is_wildcard_addr(addr)) {
 		set_wildcard_reuse(AF(addr), 1);
+	}
 #endif
 
 	/*
@@ -3075,69 +2999,75 @@ open_socket(
 	errval = bind(fd, &addr->sa, SOCKLEN(addr));
 
 #ifdef OS_NEEDS_REUSEADDR_FOR_IFADDRBIND
-	if (!is_wildcard_addr(addr))
+	if (!is_wildcard_addr(addr)) {
+		saved_errno = errno;	/* save for DPRINTF just below */
 		set_wildcard_reuse(AF(addr), 0);
+		errno = saved_errno;
+	}
 #endif
 
 	if (errval < 0) {
 		/*
-		 * Don't log this under all conditions
+		 * Don't syslog this, as bind() failing is not always
+		 * unexpected.  It can happen for wildcard addresses and
+		 * broadcast addresses (where turn_off_reuse is 0) and
+		 * when attempting to bind an address we've already
+		 * bound due to more than one interface using the same
+		 * local address.  Leave it to callers to report errors.
 		 */
-		if (turn_off_reuse == 0
-#ifdef DEBUG
-		    || debug > 1
-#endif
-		    ) {
-			msyslog(LOG_ERR,
-				"bind(%d) AF_INET%s %s%s flags 0x%x failed: %m",
-				fd, IS_IPV6(addr) ? "6" : "",
-				sptoa(addr),
-				IS_MCAST(addr) ? " (multicast)" : "",
-				interf->flags);
-		}
-
+		DPRINTF(1,("bind(%d) %s%s flags 0x%x failed: %m",
+			   fd, sptoa(addr),
+			   IS_MCAST(addr) ? " (multicast)" : "",
+			   interf->flags));
 		closesocket(fd);
 
 		return INVALID_SOCKET;
 	}
 
-#ifdef HAVE_TIMESTAMP
-	{
-		if (setsockopt(fd, SOL_SOCKET, SO_TIMESTAMP,
-			       (void *)&on, sizeof(on)))
-			msyslog(LOG_DEBUG,
-				"setsockopt SO_TIMESTAMP on fails on address %s: %m",
-				stoa(addr));
-		else
-			DPRINTF(4, ("setsockopt SO_TIMESTAMP enabled on fd %d address %s\n",
-				    fd, stoa(addr)));
-	}
-#endif
-#ifdef HAVE_TIMESTAMPNS
-	{
-		if (setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPNS,
-			       (void *)&on, sizeof(on)))
-			msyslog(LOG_DEBUG,
-				"setsockopt SO_TIMESTAMPNS on fails on address %s: %m",
-				stoa(addr));
-		else
-			DPRINTF(4, ("setsockopt SO_TIMESTAMPNS enabled on fd %d address %s\n",
-				    fd, stoa(addr)));
-	}
-#endif
-#ifdef HAVE_BINTIME
-	{
-		if (setsockopt(fd, SOL_SOCKET, SO_BINTIME,
-			       (void *)&on, sizeof(on)))
-			msyslog(LOG_DEBUG,
-				"setsockopt SO_BINTIME on fails on address %s: %m",
-				stoa(addr));
-		else
-			DPRINTF(4, ("setsockopt SO_BINTIME enabled on fd %d address %s\n",
-				    fd, stoa(addr)));
-	}
-#endif
+	/*
+	 * Enable kernel timestamping if available.  Prior to ntpd 4.2.8p19,
+	 * ntpd preferred SO_BINTIME, then SO_TIMESTAMPNS, then SO_TIMESTAMP.
+	 * Unfortunately, from its introduction until late 2025, FreeBSD's
+	 * SO_BINTIME did not work for IPv6.  However, since 2017, bintime
+	 * been available for both IPv4 and IPv6 via SO_TIMESTAMP followed
+	 * by SO_TS_CLOCK selecting SO_TS_BINTIME.  In order to provide the
+	 * best available on every OS, we now prefer SO_TIMESTAMP with
+	 * SO_TS_BINTIME, in place of SO_BINTIME.  https://bugs.ntp.org/3989
+	 * 
+	 * SO_TIMESTAMP for Windows is in io_completion_port_add_socket().
+	 */
+#ifdef HAVE_TS_BINTIME
+	if (setsockopt(fd, SOL_SOCKET, SO_TIMESTAMP, (void *)&on,
+		       sizeof(on))) {
+		msyslog(LOG_ERR,
+			"setsockopt SO_TIMESTAMP on %s: %m",
+			stoa(addr));
+	} else {
+		int ts_clock = SO_TS_BINTIME;
 
+		if (setsockopt(fd, SOL_SOCKET, SO_TS_CLOCK,
+			       (void *)&ts_clock, sizeof(ts_clock))) {
+			msyslog(LOG_ERR,
+				"setsockopt SO_TS_CLOCK SO_TS_BINTIME on %s: %m",
+				stoa(addr));
+		} else {
+			interf->kern_ts_enab = TRUE;
+			DPRINTF(1, (NTP_SO_TS_STRING " enabled for %s\n",
+				stoa(addr)));
+		}
+	}
+#elif defined(HAVE_PACKET_TIMESTAMP)
+	if (setsockopt(fd, SOL_SOCKET, NTP_SO_TS, (void *)&on,
+		       sizeof(on))) {
+		msyslog(LOG_ERR,
+			"setsockopt " NTP_SO_TS_STRING " on %s: %m",
+			stoa(addr));
+	} else {
+		interf->kern_ts_enab = TRUE;
+		DPRINTF(1, (NTP_SO_TS_STRING " enabled for %s\n",
+			    stoa(addr)));
+	}
+#endif
 	DPRINTF(4, ("bind(%d) addr %s, flags 0x%x\n",
 		    fd, sptoa(addr), interf->flags));
 
@@ -3145,8 +3075,7 @@ open_socket(
 
 #ifdef HAVE_SIGNALED_IO
 	init_socket_sig(fd);
-#endif /* not HAVE_SIGNALED_IO */
-
+#endif
 	add_fd_to_list(fd, FD_TYPE_SOCKET);
 
 #if !defined(SYS_WINNT) && !defined(VMS)
@@ -3154,10 +3083,7 @@ open_socket(
 		    fcntl(fd, F_GETFL, 0)));
 #endif /* SYS_WINNT || VMS */
 
-#if defined(HAVE_IO_COMPLETION_PORT)
-/*
- * Add the socket to the completion port
- */
+#ifdef SYS_WINNT
 	if (!io_completion_port_add_socket(fd, interf, bcast)) {
 		msyslog(LOG_ERR, "unable to set up io completion port - EXITING");
 		exit(1);
@@ -3165,7 +3091,6 @@ open_socket(
 #endif
 	return fd;
 }
-
 
 
 /* XXX ELIMINATE sendpkt similar in ntpq.c, ntpdc.c, ntp_io.c, ntptrace.c */
@@ -3260,12 +3185,8 @@ sendpkt(
 
 #ifdef SIM
 		cc = simulate_server(dest, src, pkt);
-#elif defined(HAVE_IO_COMPLETION_PORT)
-		cc = io_completion_port_sendto(src, src->fd, pkt,
-			(size_t)len, dest);
 #else
-		cc = sendto(src->fd, (char *)pkt, (u_int)len, 0,
-			    &dest->sa, SOCKLEN(dest));
+		cc = ntpd_sendto(src, pkt, len, dest);
 #endif
 		if (cc == -1) {
 			src->notsent++;
@@ -3305,14 +3226,13 @@ sendpkt(
 static char *
 fdbits(
 	int		count,
-	const fd_set*	set
+	const fd_set *	set
 	)
 {
-	static char buffer[256];
-	char * buf = buffer;
+	char *		buffer = lib_getbuf();
+	char *		buf = buffer;
 
-	count = min(count,  sizeof(buffer) - 1);
-
+	count = min(count, LIB_BUFLENGTH - 1);
 	while (count >= 0) {
 		*buf++ = FD_ISSET(count, set) ? '#' : '-';
 		count--;
@@ -3411,110 +3331,191 @@ fetch_timestamp(
 	l_fp			ts
 	)
 {
+	static int/*BOOL*/	kern_recv_ts_seen[2];	/* IPv4, IPv6 */
+	static int/*BOOL*/	kern_recv_ts_warned[2];	/* IPv4, IPv6 */
+	static u_long		recv_cmsg_trunc_lastwarn;
+	static l_fp		total_delta;
+	static u_int		ts_count;
+	static u_int		stats_dur = 3 * SECSPERHR;
+	static u_long		d_stats_reset_time;
+	u_int			fam_index;
 	struct cmsghdr *	cmsghdr;
 	unsigned long		ticks;
 	double			fuzz;
 	l_fp			lfpfuzz;
 	l_fp			nts;
-#ifdef DEBUG_TIMING
+/* #if defined(DEBUG_TIMING) || defined(DEBUG) */  /* reporting delta */
 	l_fp			dts;
-#endif
+/* #endif */
 
+	nts = ts;
+	REQUIRE(NULL != rb->dstadr);
+	fam_index = IS_IPV6(&rb->dstadr->sin);
+	if (MSG_CTRUNC & msghdr->msg_flags) {
+		if (   0 == recv_cmsg_trunc_lastwarn
+		    || current_time > SECSPERHR + recv_cmsg_trunc_lastwarn) {
+			recv_cmsg_trunc_lastwarn = current_time;
+			msyslog(LOG_ERR,
+				"%s truncated OOB data",
+				stoa(&rb->dstadr->sin));
+		}
+		return nts;
+	}
 	cmsghdr = CMSG_FIRSTHDR(msghdr);
 	while (cmsghdr != NULL) {
-		switch (cmsghdr->cmsg_type)
+		if (   NTP_SCM_TS == cmsghdr->cmsg_type
+		    && SOL_SOCKET == cmsghdr->cmsg_level)
 		{
-#ifdef HAVE_BINTIME
-		case SCM_BINTIME:
-#endif  /* HAVE_BINTIME */
-#ifdef HAVE_TIMESTAMPNS
-		case SCM_TIMESTAMPNS:
-#endif	/* HAVE_TIMESTAMPNS */
-#ifdef HAVE_TIMESTAMP
-		case SCM_TIMESTAMP:
-#endif	/* HAVE_TIMESTAMP */
-#if defined(HAVE_BINTIME) || defined (HAVE_TIMESTAMPNS) || defined(HAVE_TIMESTAMP)
-			switch (cmsghdr->cmsg_type)
-			{
-#ifdef HAVE_BINTIME
-			case SCM_BINTIME:
-				{
-					struct bintime	pbt;
-					memcpy(&pbt, CMSG_DATA(cmsghdr), sizeof(pbt));
-					/*
-					 * bintime documentation is at http://phk.freebsd.dk/pubs/timecounter.pdf
-					 */
-					nts.l_i = pbt.sec + JAN_1970;
-					nts.l_uf = (u_int32)(pbt.frac >> 32);
-					if (sys_tick > measured_tick &&
-					    sys_tick > 1e-9) {
-						ticks = (unsigned long)(nts.l_uf / (unsigned long)(sys_tick * FRAC));
-						nts.l_uf = (unsigned long)(ticks * (unsigned long)(sys_tick * FRAC));
-					}
-					DPRINTF(4, ("fetch_timestamp: system bintime network time stamp: %ld.%09lu\n",
-						    (long)pbt.sec, (u_long)((nts.l_uf / FRAC) * 1e9)));
-				}
-				break;
-#endif  /* HAVE_BINTIME */
-#ifdef HAVE_TIMESTAMPNS
-			case SCM_TIMESTAMPNS:
-				{
-					struct timespec	pts;
-					memcpy(&pts, CMSG_DATA(cmsghdr), sizeof(pts));
-					if (sys_tick > measured_tick &&
-					    sys_tick > 1e-9) {
-						ticks = (unsigned long)((pts.tv_nsec * 1e-9) /
-									sys_tick);
-						pts.tv_nsec = (long)(ticks * 1e9 *
-								     sys_tick);
-					}
-					DPRINTF(4, ("fetch_timestamp: system nsec network time stamp: %ld.%09ld\n",
-						    pts.tv_sec, pts.tv_nsec));
-					nts = tspec_stamp_to_lfp(pts);
-				}
-				break;
-#endif	/* HAVE_TIMESTAMPNS */
-#ifdef HAVE_TIMESTAMP
-			case SCM_TIMESTAMP:
-				{
-					struct timeval	ptv;
-					memcpy(&ptv, CMSG_DATA(cmsghdr), sizeof(ptv));
-					if (sys_tick > measured_tick &&
-					    sys_tick > 1e-6) {
-						ticks = (unsigned long)((ptv.tv_usec * 1e-6) /
-									sys_tick);
-						ptv.tv_usec = (long)(ticks * 1e6 *
-								    sys_tick);
-					}
-					DPRINTF(4, ("fetch_timestamp: system usec network time stamp: %jd.%06ld\n",
-						    (intmax_t)ptv.tv_sec, (long)ptv.tv_usec));
-					nts = tval_stamp_to_lfp(ptv);
-				}
-				break;
-#endif  /* HAVE_TIMESTAMP */
+# if SCM_BINTIME == NTP_SCM_TS
+
+			struct bintime	pbt;
+
+			memcpy(&pbt, CMSG_DATA(cmsghdr), sizeof(pbt));
+			/*
+			 * bintime documentation is at http://phk.freebsd.dk/pubs/timecounter.pdf
+			 */
+			nts.l_i = pbt.sec + JAN_1970;
+			nts.l_uf = (u_int32)(pbt.frac >> 32);
+			if (sys_tick > measured_tick && sys_tick > 1e-9) {
+				ticks = (u_long)(nts.l_uf / (u_long)(sys_tick * FRAC));
+				nts.l_uf = (u_long)(ticks * (u_long)(sys_tick * FRAC));
 			}
+			DPRINTF(4, ("%s: system bintime network timestamp: %ld.%09lu\n",
+				    __func__, (long)pbt.sec,
+				    (u_long)(nts.l_uf / FRAC * 1e9)));
+
+# elif SCM_TIMESTAMPNS == NTP_SCM_TS
+
+			struct timespec	pts;
+
+			memcpy(&pts, CMSG_DATA(cmsghdr), sizeof(pts));
+			if (sys_tick > measured_tick && sys_tick > 1e-9) {
+				ticks = (u_long)(pts.tv_nsec * 1e-9 / sys_tick);
+				pts.tv_nsec = (long)(ticks * 1e9 * sys_tick);
+			}
+			DPRINTF(4, ("%s: system nsec network timestamp: %ld.%09ld\n",
+				    __func__, (long)pts.tv_sec, pts.tv_nsec));
+			nts = tspec_stamp_to_lfp(pts);
+
+# elif SCM_TIMESTAMP == NTP_SCM_TS
+
+			struct timeval	ptv;
+
+			memcpy(&ptv, CMSG_DATA(cmsghdr), sizeof(ptv));
+			if (sys_tick > measured_tick && sys_tick > 1e-6) {
+				ticks = (u_long)(ptv.tv_usec * 1e-6 / sys_tick);
+				ptv.tv_usec = (long)(ticks * 1e6 * sys_tick);
+			}
+			DPRINTF(4, ("%s: system usec network timestamp: %ld.%06ld\n",
+				    __func__, (long)ptv.tv_sec, (long)ptv.tv_usec));
+			nts = tval_stamp_to_lfp(ptv);
+# else
+#  error "Unknown NTP_SCM_TS value"
+# endif
+			/*
+			 * Report occasionally on average difference between
+			 * ntpd user-mode timestamps and SO_TIMESTAMP.
+			 */
+			NLOG(NLOG_SYSINFO) {
+				dts = ts;
+				L_SUB(&dts, &nts);
+				L_ADD(&total_delta, &dts);
+				ts_count++;
+				if (0 == d_stats_reset_time) {
+					d_stats_reset_time = current_time;
+				}
+				else if (current_time > d_stats_reset_time + stats_dur) {
+					double	avg_delta;
+
+					LFPTOD(&total_delta, avg_delta);
+					avg_delta /= ts_count;
+					msyslog(LOG_INFO,
+						"%u hour avg UDP receive timestamp correction %.3f usec",
+						stats_dur / SECSPERHR, avg_delta * 1e6);
+					L_CLR(&total_delta);
+					ts_count = 0;
+					d_stats_reset_time = current_time;
+					if (stats_dur < SECSPERDAY) {
+						stats_dur *= 2;
+					}
+				}
+			}
+# if defined(DEBUG_TIMING) || defined(DEBUG)
+			dts = ts;
+			L_SUB(&dts, &nts);
+			DPRINTF(4, ("%s:    raw timestamp delta: %sms\n",
+				    __func__, lfptoms(&dts, 6)));
+# endif
 			fuzz = ntp_uurandom() * sys_fuzz;
 			DTOLFP(fuzz, &lfpfuzz);
 			L_ADD(&nts, &lfpfuzz);
-#ifdef DEBUG_TIMING
+# if defined(DEBUG_TIMING) || defined(DEBUG)
 			dts = ts;
 			L_SUB(&dts, &nts);
-			collect_timing(rb, "input processing delay", 1,
-				       &dts);
-			DPRINTF(4, ("fetch_timestamp: timestamp delta: %s (incl. fuzz)\n",
-				    lfptoa(&dts, 9)));
-#endif	/* DEBUG_TIMING */
-			ts = nts;  /* network time stamp */
-			break;
-#endif	/* HAVE_BINTIME || HAVE_TIMESTAMPNS || HAVE_TIMESTAMP */
-
-		default:
-			DPRINTF(4, ("fetch_timestamp: skipping control message 0x%x\n",
-				    cmsghdr->cmsg_type));
+			DPRINTF(4, ("%s: fuzzed timestamp delta: %sms\n",
+				    __func__, lfptoms(&dts, 6)));
+# endif
+# ifdef DEBUG_TIMING
+			collect_timing(rb, "input processing delay", 1, &dts);
+			DPRINTF(4, ("%s: timestamp delta: %s (incl. fuzz)\n",
+				    __func__, lfptoa(&dts, 9)));
+# endif
+			if (!kern_recv_ts_seen[fam_index]) {
+				kern_recv_ts_seen[fam_index] = TRUE;
+				rb->dstadr->kern_ts_seen = TRUE;
+			}
+		} else {
+			DPRINTF(4, ("%s: skipping control message 0x%x\n",
+				    __func__, cmsghdr->cmsg_type));
 		}
 		cmsghdr = CMSG_NXTHDR(msghdr, cmsghdr);
 	}
-	return ts;
+	/*
+	 * Warn once for each IP protocol family if SO_TIMESTAMP or similar
+	 * does not work after it was successfully enabled on a socket.
+	 * FreeBSD SO_BINTIME was not implemented for IPv6 until FreeBSD 15.0
+	 * and 14.4 in fall 2025:
+	 * 
+	 * https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=289423
+	 * 15.0:
+	 * https://cgit.freebsd.org/src/commit/?id=cd02a8a9f8be2085d5242606a79668dc3720e7b0
+	 * cherry-picked to stable/14 branch, to be 14.4:
+	 * https://cgit.freebsd.org/src/commit/?id=f801346706ea75401614df2dba3f85ecea2af03e
+	 * 
+	 * FreeBSD added support for SO_TIMESTAMP with SO_TS_BINTIME which
+	 * worked for IPv6 from the start as of Jan 2017 for FreeBSD 11.0 and
+	 * possibly 10.4, but ntpd unfortunately did not gain support for 
+	 * SO_TS_BINTIME until 4.2.8p19.
+	 * 
+	 * https://cgit.freebsd.org/src/commit/?id=339efd75a49379707b8f8f578d0814a194047b5b
+	 * 
+	 * Prior to that ntpd version, kernel receive timestamping worked only
+	 * for IPv4 as ntpd assumed SO_BINTIME worked for IPv6 as well.  As of
+	 * 4.2.8p19, ntpd uses SO_TIMESTAMP with SO_TS_BINTIME on systems with
+	 * it, otherwise SO_TIMESTAMPNS is used.  This should mean the best
+	 * available kernel receive timestamp is used on all systems.
+	 * 
+	 * This warning is belt-and-suspenders to help identify systems falling
+	 * through the cracks.  The tracking also lays the groundwork to later
+	 * suggest not using elevated priority for ntpd when it is of little
+	 * benefit, e.g. when kernel UDP receive timestamps work and there are
+	 * no reference clocks or there is a PPS timestamped at interrupt time
+	 * by the kernel.
+	 */
+	if (   !kern_recv_ts_seen[fam_index]
+	    && !kern_recv_ts_warned[fam_index]
+	    && rb->dstadr->kern_ts_enab
+	    && rb->fd == rb->dstadr->fd) {
+
+		kern_recv_ts_warned[fam_index] = TRUE;
+		msyslog(LOG_ERR,
+			"%s receive timestamping " NTP_SCM_TS_STRING
+			" failed on %s",
+			fam_index ? "IPv6" : "IPv4",
+			stoa(&rb->dstadr->sin));
+	}
+
+	return nts;
 }
 #endif	/* HAVE_PACKET_TIMESTAMP */
 
@@ -3555,9 +3556,6 @@ read_network_packet(
 		char buf[16];
 		sockaddr_u from;
 
-		if (rb != NULL)
-			freerecvbuf(rb);
-
 		fromlen = sizeof(from);
 		buflen = recvfrom(fd, buf, sizeof(buf), 0,
 				  &from.sa, &fromlen);
@@ -3589,7 +3587,15 @@ read_network_packet(
 	msghdr.msg_control    = (void *)&control;
 	msghdr.msg_controllen = sizeof(control);
 	msghdr.msg_flags      = 0;
-	rb->recv_length       = recvmsg(fd, &msghdr, 0);
+
+	rb->recv_length = recvmsg(fd, &msghdr, 0);
+	if (rb->recv_length > 0 && (MSG_TRUNC & msghdr.msg_flags)) {
+		msyslog(LOG_ERR, "%s packet truncated (%d bytes)",
+			stoa(&rb->recv_srcadr), rb->recv_length);
+		++packets_dropped;
+		buflen = 0;
+		goto dropit;
+	}
 #endif
 
 	buflen = rb->recv_length;
@@ -3600,6 +3606,7 @@ read_network_packet(
 	     || EAGAIN == errno
 #endif
 	     ))) {
+dropit:
 		freerecvbuf(rb);
 		return (buflen);
 	} else if (buflen < 0) {
@@ -3720,14 +3727,7 @@ io_handler(void)
 		input_handler_scan(&ts, &rdfdes);
 	} else if (nfound == -1 && errno != EINTR) {
 		msyslog(LOG_ERR, "select() error: %m");
-	}
-#   ifdef DEBUG
-	else if (debug > 4) {
-		msyslog(LOG_DEBUG, "select(): nfound=%d, error: %m", nfound);
-	} else {
-		DPRINTF(3, ("select() returned %d: %m\n", nfound));
-	}
-#   endif /* DEBUG */
+	} 
 #  else /* HAVE_SIGNALED_IO */
 	wait_for_signal();
 #  endif /* HAVE_SIGNALED_IO */
@@ -4121,9 +4121,9 @@ findlocalinterface(
 	sockaddrlen = sizeof(saddr);
 	rtn = getsockname(s, &saddr.sa, &sockaddrlen);
 	closesocket(s);
-	if (SOCKET_ERROR == rtn)
+	if (SOCKET_ERROR == rtn) {
 		return NULL;
-
+	}
 	DPRINTF(4, ("findlocalinterface: kernel maps %s to %s\n",
 		    stoa(addr), stoa(&saddr)));
 
@@ -4457,7 +4457,7 @@ io_addclock(
 		UNBLOCKIO();
 		return 0;
 	}
-# elif defined(HAVE_IO_COMPLETION_PORT)
+# elif defined(SYS_WINNT)
 	if (!io_completion_port_add_clock_io(rio)) {
 		UNBLOCKIO();
 		return 0;
@@ -4554,6 +4554,8 @@ kill_asyncio(
 
 /*
  * Add and delete functions for the list of input file descriptors
+ * Really only needed on Windows to distinguish between socket and fd
+ * and to remove from the IO completion port.
  */
 static void
 add_fd_to_list(
@@ -4757,12 +4759,13 @@ process_routing_msgs(struct asyncio_reader *reader)
 {
 	static void *	buffer;
 	static size_t	buffsz = 8192;
-	int		cnt, new, msg_type;
+	size_t		cnt, newcnt;
+	int		msg_type;
 	socklen_t	len;
 #ifdef HAVE_RTNETLINK
 	struct nlmsghdr *nh;
 #else
-	struct rt_msghdr rtm;
+	struct rt_msghdr *rtm;
 	char *p;
 	char *endp;
 #endif
@@ -4784,19 +4787,21 @@ process_routing_msgs(struct asyncio_reader *reader)
 	if (cnt < 0) {
 		if (errno == ENOBUFS) {
 			/* increase socket buffer by 25% */
-			len = sizeof cnt;
+			len = sizeof(cnt);
+			errno = 0; /* distinguish getsockopt failure from unexpected len */
 			if (0 > getsockopt(reader->fd, SOL_SOCKET, SO_RCVBUF, &cnt, &len) ||
-			    sizeof cnt != len) {
+			    sizeof(cnt) != len) {
 				msyslog(LOG_ERR,
 					"routing getsockopt SO_RCVBUF %u %u: %m - disabling",
-					(u_int)cnt, (u_int)sizeof cnt);
+					(u_int)cnt, (u_int)sizeof(cnt));
 				goto disable;
 			}
-			new = cnt + (cnt / 4);
-			if (0 > setsockopt(reader->fd, SOL_SOCKET, SO_RCVBUF, &new, sizeof new)) {
+			len = sizeof(newcnt);
+			newcnt = cnt + (cnt / 4);
+			if (0 > setsockopt(reader->fd, SOL_SOCKET, SO_RCVBUF, &newcnt, len)) {
 				msyslog(LOG_ERR,
-					"routing setsockopt SO_RCVBUF %d -> %d: %m - disabling",
-					cnt, new);
+					"routing setsockopt SO_RCVBUF %u -> %u: %m - disabling",
+					(u_int)cnt, (u_int)newcnt);
 				goto disable;
 			}
 		} else {
@@ -4804,34 +4809,35 @@ process_routing_msgs(struct asyncio_reader *reader)
 				"routing socket reports: %m - disabling");
 		    disable:
 			remove_asyncio_reader(reader);
-			delete_asyncio_reader(reader);
-			return;
+			/* free(buffer); skipped as it might be use-after-free */
 		}
+		return;		/* nothing to process */
 	}
 
 	/*
 	 * process routing message
 	 */
 #ifdef HAVE_RTNETLINK
-	for (nh = buffer; NLMSG_OK(nh, cnt); nh = NLMSG_NEXT(nh, cnt))
-	{
+	for (nh = buffer;
+	     NLMSG_OK(nh, cnt);
+	     nh = QUIET_ALIGN_WARN(NLMSG_NEXT(nh, cnt))) {
+
 		msg_type = nh->nlmsg_type;
 #else
 	for (p = buffer, endp = p + cnt;
 	     (p + sizeof(struct rt_msghdr)) <= endp;
-	     p += rtm.rtm_msglen)
-	{
-		memcpy(&rtm, p, sizeof(rtm));
-		if (rtm.rtm_version != RTM_VERSION) {
+	     p += rtm->rtm_msglen) {
+
+		rtm = QUIET_ALIGN_WARN(p);
+		if (rtm->rtm_version != RTM_VERSION) {
 			msyslog(LOG_ERR,
-				"version mismatch (got %d - expected %d) on routing socket - disabling",
-				rtm.rtm_version, RTM_VERSION);
+				"rtm_version %d, expected %d, disabling routing socket",
+				rtm->rtm_version, RTM_VERSION);
 
 			remove_asyncio_reader(reader);
-			delete_asyncio_reader(reader);
 			return;
 		}
-		msg_type = rtm.rtm_type;
+		msg_type = rtm->rtm_type;
 #endif	/* !HAVE_RTNETLINK */
 		switch (msg_type) {
 #ifdef RTM_NEWADDR

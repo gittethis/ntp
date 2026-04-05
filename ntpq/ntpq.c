@@ -198,7 +198,8 @@ static	int	getarg		(const char *, int, arg_v *);
 static	int	findcmd		(const char *, struct xcmd *,
 				 struct xcmd *, struct xcmd **);
 static	int	rtdatetolfp	(char *, l_fp *);
-static	int	decodearr	(char *, int *, l_fp *, int);
+static	int	decodearr	(char * cp, size_t * narr, l_fp * lfpa,
+				 size_t amax);
 static	void	help		(struct parse *, FILE *);
 static	int	helpsort	(const void *, const void *);
 static	void	printusage	(struct xcmd *, FILE *);
@@ -227,32 +228,35 @@ static	void	rawprint	(int, size_t, const char *, int, int, FILE *);
 static	void	startoutput	(void);
 static	void	output		(FILE *, const char *, const char *);
 static	void	endoutput	(FILE *);
-static	void	outputarr	(FILE *, char *, int, l_fp *, int);
+static	void	outputarr	(FILE *fp, char *name, size_t narr, l_fp *lfpa,
+				 int issigned);
 static	int	assoccmp	(const void *, const void *);
 	u_short	varfmt		(const char *);
 	void	ntpq_custom_opt_handler(tOptions *, tOptDesc *);
 
 #ifndef BUILD_AS_LIB
+static	void	prepare_help_keytype(struct xcmd *xcp_keytype);
 static	char   *list_digest_names(void);
 static	void	on_ctrlc	(void);
 static	int	my_easprintf	(char**, const char *, ...) NTP_PRINTF(2, 3);
-#ifdef OPENSSL
+# ifdef OPENSSL
 static	char   *insert_cmac	(char *list);
-# ifdef HAVE_EVP_MD_DO_ALL_SORTED
+#  ifdef HAVE_EVP_MD_DO_ALL_SORTED
 static	void	list_md_fn	(const EVP_MD *m, const char *from,
 				 const char *to, void *arg);
-# endif /* HAVE_EVP_MD_DO_ALL_SORTED */
-#endif /* OPENSSL */
+static	bool	digest_alg_works(const EVP_MD *m, const char *name);
+#  endif /* HAVE_EVP_MD_DO_ALL_SORTED */
+# endif /* OPENSSL */
 #endif /* !defined(BUILD_AS_LIB) */
 
 
-/* read a character from memory and expand to integer */
+/* read an unsigned character from memory and expand to integer */
 static inline int
 pgetc(
 	const char *cp
 	)
 {
-	return (int)*(const unsigned char*)cp;
+	return (int)*(const u_char *)cp;
 }
 
 
@@ -316,8 +320,8 @@ struct xcmd builtins[] = {
 	  { "version number", "", "", "" },
 	  "set the NTP version number to use for requests" },
 	{ "keytype",	keytype,	{ OPT|NTP_STR, NO, NO, NO },
-	  { "key type %s", "", "", "" },
-	  NULL },
+	  { "", "", "", "" },
+	  NULL },	/* NULL triggers prepare_help_keytype() */
 	{ 0,		0,		{ NO, NO, NO, NO },
 	  { "", "", "", "" }, "" }
 };
@@ -358,16 +362,13 @@ struct sock_timeval tvsout = { DEFSTIMEOUT, 0 };/* secondary time out */
 l_fp delay_time;				/* delay time */
 char currenthost[LENHOSTNAME];			/* current host name */
 int currenthostisnum;				/* is prior text from IP? */
-struct sockaddr_in hostaddr;			/* host address */
 int showhostnames = 1;				/* show host names by default */
 int wideremote = 0;				/* show wide remote names? */
 
 int ai_fam_templ;				/* address family */
-int ai_fam_default;				/* default address family */
+int ai_fam_default = AF_UNSPEC;			/* default address family */
 SOCKET sockfd;					/* fd socket is opened on */
 int havehost = 0;				/* set to 1 when host open */
-int s_port = 0;
-struct servent *server_entry = NULL;		/* server entry for ntp */
 
 
 /*
@@ -524,39 +525,6 @@ ntpqmain(
 	if (!ipv6_works)
 		ai_fam_default = AF_INET;
 
-	/* Fixup keytype's help based on available digest names */
-
-	{
-	    char *list;
-	    char *msg;
-
-	    list = list_digest_names();
-
-	    for (icmd = 0; icmd < sizeof(builtins)/sizeof(*builtins); icmd++) {
-		if (strcmp("keytype", builtins[icmd].keyword) == 0) {
-		    break;
-		}
-	    }
-
-	    /* CID: 1295478 */
-	    /* This should only "trip" if "keytype" is removed from builtins */
-	    INSIST(icmd < sizeof(builtins)/sizeof(*builtins));
-
-#ifdef OPENSSL
-	    builtins[icmd].desc[0] = "digest-name";
-	    my_easprintf(&msg,
-			 "set key type to use for authenticated requests, one of:%s",
-			 list);
-#else
-	    builtins[icmd].desc[0] = "md5";
-	    my_easprintf(&msg,
-			 "set key type to use for authenticated requests (%s)",
-			 list);
-#endif
-	    builtins[icmd].comment = msg;
-	    free(list);
-	}
-
 	progname = argv[0];
 
 	{
@@ -681,7 +649,7 @@ openhost(
 		cp = strchr(hname + 1, ']');
 		if (!cp || (octets = (size_t)(cp - hname) - 1) >= sizeof(name)) {
 			errno = EINVAL;
-			warning("%s", "bad hostname/address");
+			warning("Unable to resolve hostname/address '%s'", hname);
 			return 0;
 		}
 		memcpy(name, hname + 1, octets);
@@ -742,7 +710,8 @@ openhost(
 	}
 #endif
 	if (a_info != 0) {
-		fprintf(stderr, "%s\n", gai_strerror(a_info));
+		fprintf(stderr, "%s: Unable to resolve hostname/address '%s':"
+				" %s\n", progname, hname, gai_strerror(a_info));
 		return 0;
 	}
 
@@ -751,7 +720,7 @@ openhost(
 	octets = min(sizeof(addr), ai->ai_addrlen);
 	memcpy(&addr, ai->ai_addr, octets);
 
-	if (ai->ai_canonname == NULL) {
+	if (NULL == ai->ai_canonname) {
 		strlcpy(temphost, stoa(&addr), sizeof(temphost));
 		currenthostisnum = TRUE;
 	} else {
@@ -759,35 +728,27 @@ openhost(
 		currenthostisnum = FALSE;
 	}
 
-	if (debug > 2)
+	freeaddrinfo(ai);
+	ai = NULL;
+
+	if (debug > 2) {
 		printf("Opening host %s (%s)\n",
 			temphost,
-			(ai->ai_family == AF_INET)
-			? "AF_INET"
-			: (ai->ai_family == AF_INET6)
-			  ? "AF_INET6"
-			  : "AF-???"
-			);
+			(IS_IPV4(&addr))
+			? "IPv4"
+			: (IS_IPV6(&addr))
+			  ? "IPv6"
+			  : "unknown address family");
+	}
 
 	if (havehost == 1) {
-		if (debug > 2)
+		if (debug > 2) {
 			printf("Closing old host %s\n", currenthost);
+		}
 		closesocket(sockfd);
 		havehost = 0;
 	}
 	strlcpy(currenthost, temphost, sizeof(currenthost));
-
-	/* port maps to the same location in both families */
-	s_port = NSRCPORT(&addr);
-#ifdef SYS_VXWORKS
-	((struct sockaddr_in6 *)&hostaddr)->sin6_port = htons(SERVER_PORT_NUM);
-	if (ai->ai_family == AF_INET)
-		*(struct sockaddr_in *)&hostaddr=
-			*((struct sockaddr_in *)ai->ai_addr);
-	else
-		*(struct sockaddr_in6 *)&hostaddr=
-			*((struct sockaddr_in6 *)ai->ai_addr);
-#endif /* SYS_VXWORKS */
 
 #ifdef SYS_WINNT
 	{
@@ -800,42 +761,33 @@ openhost(
 			mfprintf(stderr,
 				 "setsockopt(SO_SYNCHRONOUS_NONALERT)"
 				 " error: %m\n");
-			freeaddrinfo(ai);
 			exit(1);
 		}
 	}
 #endif /* SYS_WINNT */
 
-	sockfd = socket(ai->ai_family, ai->ai_socktype,
-			ai->ai_protocol);
+	sockfd = socket(AF(&addr), SOCK_DGRAM, IPPROTO_UDP);
 	if (sockfd == INVALID_SOCKET) {
-		error("socket");
-		freeaddrinfo(ai);
+		error("socket()");
 		return 0;
 	}
 
 
 #ifdef NEED_RCVBUF_SLOP
 # ifdef SO_RCVBUF
-	{ int rbufsize = DATASIZE + 2048;	/* 2K for slop */
-	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF,
-		       (void *)&rbufsize, sizeof(int)) == -1)
-		error("setsockopt");
+	{ 
+		int rbufsize = DATASIZE + 2048;		/* 2K for slop */
+
+		if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF,
+			       (void *)&rbufsize, sizeof(rbufsize)) == -1) {
+			error("setsockopt(SO_RCVBUF, %d)", rbufsize);
+		}
 	}
 # endif
 #endif
 
-	if
-#ifdef SYS_VXWORKS
-	   (connect(sockfd, (struct sockaddr *)&hostaddr,
-		    sizeof(hostaddr)) == -1)
-#else
-	   (connect(sockfd, (struct sockaddr *)ai->ai_addr,
-		ai->ai_addrlen) == -1)
-#endif /* SYS_VXWORKS */
-	{
-		error("connect");
-		freeaddrinfo(ai);
+	if (connect(sockfd, &addr.sa, SOCKLEN(&addr)) == -1) {
+		error("connect %s", stoa(&addr));
 		return 0;
 	}
 	freeaddrinfo(ai);
@@ -903,7 +855,7 @@ sendpkt(
 	)
 {
 	if (debug >= 3)
-		printf("Sending %zu octets\n", xdatalen);
+		printf("Sending %u octets\n", (u_int)xdatalen);
 
 	if (send(sockfd, xdata, xdatalen, 0) == -1) {
 		warning("write to %s failed", currenthost);
@@ -1332,8 +1284,8 @@ sendrequest(
 	 */
 	if (qsize > CTL_MAX_DATA_LEN) {
 		fprintf(stderr,
-			"***Internal error!  qsize (%zu) too large\n",
-			qsize);
+			"***Internal error!  qsize (%u) too large\n",
+			(u_int)qsize);
 		return 1;
 	}
 
@@ -1409,11 +1361,22 @@ sendrequest(
 	if (!maclen) {
 		fprintf(stderr, "Key not found\n");
 		return 1;
-	} else if ((size_t)maclen != (info_auth_hashlen + sizeof(keyid_t))) {
+	}
+	else if (maclen != info_auth_hashlen + sizeof(keyid_t)) {
 		fprintf(stderr,
-			"%zu octet MAC, %zu expected with %zu octet digest\n",
-			maclen, (info_auth_hashlen + sizeof(keyid_t)),
-			info_auth_hashlen);
+			"%u octet MAC, %u expected with %u octet digest\n",
+			(u_int)maclen, (u_int)(sizeof(keyid_t) + info_auth_hashlen),
+			(u_int)info_auth_hashlen);
+		return 1;
+	}
+
+	/*
+	 * Check to make sure the data will fit in one packet
+	 */
+	if (pktsize + maclen > CTL_MAX_DATA_LEN) {
+		fprintf(stderr,
+			"***Internal error!  packet too large (%u)\n",
+			(u_int)(pktsize + maclen));
 		return 1;
 	}
 
@@ -2311,42 +2274,46 @@ decodeuint(
 
 
 /*
- * decodearr - decode an array of time values
+ * decodearr - convert an array of millisecond value strings to l_fp values.
  */
 static int
 decodearr(
-	char *cp,
-	int  *narr,
-	l_fp *lfpa,
-	int   amax
+	char *	cp,
+	size_t *narr,
+	l_fp *	lfpa,
+	size_t	amax
 	)
 {
-	char *bp;
-	char buf[60];
+	char *	bp;
+	char	buf[60];
+	char *	ep;
 
 	*narr = 0;
 
 	while (*narr < amax && *cp) {
 		if (isspace(pgetc(cp))) {
-			do
+			do {
 				++cp;
-			while (*cp && isspace(pgetc(cp)));
+			} while (*cp && isspace(pgetc(cp)));
 		} else {
 			bp = buf;
+			ep = buf + COUNTOF(buf) - 1;
 			do {
-				if (bp != (buf + sizeof(buf) - 1))
+				if (bp < ep) {
 					*bp++ = *cp;
+				}
 				++cp;
 			} while (*cp && !isspace(pgetc(cp)));
 			*bp = '\0';
 
-			if (!decodetime(buf, lfpa))
-				return 0;
+			if (!decodetime(buf, lfpa)) {
+				return FALSE;
+			}
 			++(*narr);
 			++lfpa;
 		}
 	}
-	return 1;
+	return TRUE;
 }
 
 
@@ -2371,7 +2338,7 @@ help(
 	size_t col, cols;
 	size_t length;
 
-	if (pcmd->nargs == 0) {
+	if (pcmd->nargs == 0) {		/* list commands */
 		words = 0;
 		for (xcp = builtins; xcp->keyword != NULL; xcp++) {
 			if (*(xcp->keyword) != '?' &&
@@ -2400,7 +2367,7 @@ help(
 					(int)col - 1, list[word]);
 			fprintf(fp, "\n");
 		}
-	} else {
+	} else {		/* help for one command */
 		cmd = pcmd->argval[0].string;
 		words = findcmd(cmd, builtins, opcmds, &xcp);
 		if (words == 0) {
@@ -2412,6 +2379,19 @@ help(
 				"Command `%s' is ambiguous\n", cmd);
 			return;
 		}
+#ifndef BUILD_AS_LIB
+		/*
+		 * help text for keytype is determined at runtime by testing
+		 * which digest algorithms actually work with the crypto
+		 * library, needed because a FIPS-hardened OpenSSL might be
+		 * used at runtime with a ntpq binary built with a full-
+		 * fledged OpenSSL, causing some digests to be unavailable.
+		 */
+		if (   0 == strcmp(xcp->keyword, "keytype")
+		    && NULL == xcp->comment) {
+			prepare_help_keytype(xcp);
+		}
+#endif	/* BUILD_AS_LIB */
 		fprintf(fp, "function: %s\n", xcp->comment);
 		printusage(xcp, fp);
 	}
@@ -2648,10 +2628,10 @@ keytype(
 	size_t		digest_len;
 	int		key_type;
 
-	if (!pcmd->nargs) {
-		fprintf(fp, "keytype is %s with %lu octet digests\n",
+	if (0 == pcmd->nargs) {
+		fprintf(fp, "keytype is %s with %u bit digests\n",
 			keytype_name(info_auth_keytype),
-			(u_long)info_auth_hashlen);
+			8u * (u_int)info_auth_hashlen);
 		return;
 	}
 
@@ -2659,10 +2639,10 @@ keytype(
 	digest_len = 0;
 	key_type = keytype_from_text(digest_name, &digest_len);
 
-	if (!key_type) {
+	if (0 == key_type) {
 		fprintf(fp, "keytype is not valid. "
 #ifdef OPENSSL
-			"Type \"help keytype\" for the available digest types.\n");
+			"\"help keytype\" lists the available digests.\n");
 #else
 			"Only \"md5\" is available.\n");
 #endif
@@ -2670,7 +2650,8 @@ keytype(
 	}
 
 	info_auth_keytype = key_type;
-	info_auth_hashlen = digest_len;
+	/* We use only the first 20 octets of longer digests */
+	info_auth_hashlen = min(MAX_MDG_LEN, digest_len);
 }
 
 
@@ -3117,15 +3098,6 @@ trunc_left(
 }
 
 
-/*
- * Some circular buffer space
- */
-#define	CBLEN	80
-#define	NUMCB	6
-
-char circ_buf[NUMCB][CBLEN];
-int nextcb = 0;
-
 /* --------------------------------------------------------------------
  * Parsing a response value list
  *
@@ -3536,34 +3508,37 @@ endoutput(
 
 
 /*
- * outputarr - output an array of values
+ * outputarr - output an array of l_fp values
  */
 static void
 outputarr(
-	FILE *fp,
-	char *name,
-	int narr,
-	l_fp *lfp,
-	int issigned
+	FILE *	fp,
+	char *	name,
+	size_t	narr,
+	l_fp *	lfpa,
+	int	issigned
 	)
 {
-	char *bp;
-	char *cp;
-	size_t i;
-	size_t len;
-	char buf[256];
+	char *		bp;
+	const char *	ep;
+	char *		cp;
+	size_t		i;
+	size_t		len;
+	char		buf[128];
 
 	bp = buf;
+	ep = buf + COUNTOF(buf) - 1;
 	/*
 	 * Hack to align delay and offset values
 	 */
-	for (i = (int)strlen(name); i < 11; i++)
+	for (i = strlen(name); i < 11 && bp < ep; i++) {
 		*bp++ = ' ';
-
+	}
 	for (i = narr; i > 0; i--) {
-		if (i != (size_t)narr)
+		if (i != narr) {
 			*bp++ = ' ';
-		cp = (issigned ? lfptoms(lfp, 2) : ulfptoms(lfp, 2));
+		}
+		cp = issigned ? lfptoms(lfpa, 3) : ulfptoms(lfpa, 3);
 		len = strlen(cp);
 		if (len > 7) {
 			cp[7] = '\0';
@@ -3573,31 +3548,30 @@ outputarr(
 			*bp++ = ' ';
 			len++;
 		}
-		while (*cp != '\0')
-		    *bp++ = *cp++;
-		lfp++;
+		while (*cp != '\0') {
+			*bp++ = *cp++;
+		}
+		lfpa++;
 	}
 	*bp = '\0';
 	output(fp, name, buf);
 }
 
+
+/*
+ * tstflags - return a string representation of the test flags
+ */
 static char *
 tstflags(
 	u_long val
 	)
 {
-#	if CBLEN < 10
-#	 error CBLEN is too small -- increase!
-#	endif
-
 	char *cp, *s;
 	size_t cb, i;
 	int l;
 
-	s = cp = circ_buf[nextcb];
-	if (++nextcb >= NUMCB)
-		nextcb = 0;
-	cb = sizeof(circ_buf[0]);
+	s = cp = lib_getbuf();
+	cb = LIB_BUFLENGTH;
 
 	l = snprintf(cp, cb, "%02lx", val);
 	if (l < 0 || (size_t)l >= cb)
@@ -3623,7 +3597,7 @@ tstflags(
 				if ((size_t)l >= cb) {
 					cp += cb - 4;
 					cb = 4;
-					l = strlcpy (cp, "...", cb);
+					l = strlcpy(cp, "...", cb);
 					cp += l;
 					cb -= l;
 					break;
@@ -3663,7 +3637,7 @@ cookedprint(
 	l_fp lfp;
 	sockaddr_u hval;
 	u_long uval;
-	int narr;
+	size_t narr;
 	size_t len;
 	l_fp lfparr[8];
 	char b[12];
@@ -3766,10 +3740,12 @@ cookedprint(
 
 		case AU:
 		case AS:
-			if (!value || !decodearr(value, &narr, lfparr, 8))
+			if (!value || !decodearr(value, &narr, lfparr,
+						 COUNTOF(lfparr))) {
 				output_raw = '?';
-			else
-				outputarr(fp, name, narr, lfparr, (fmt==AS));
+			} else {
+				outputarr(fp, name, narr, lfparr, (AS == fmt));
+			}
 			break;
 
 		case FX:
@@ -3906,30 +3882,78 @@ ntpq_custom_opt_handler(
 		break;
 	}
 }
+
+
+#ifndef BUILD_AS_LIB
+/* Fixup keytype's help based on digests that work at runtime */
+static void
+prepare_help_keytype(
+	struct xcmd *	xcp_keytype
+)
+{
+# ifdef OPENSSL
+	char *	list;
+	char *	msg;
+
+	list = list_digest_names();
+
+	xcp_keytype->desc[0] = "digest-name";
+	my_easprintf(&msg,
+		"set key type to use for authenticated requests, one of:%s",
+		list);
+	free(list);
+	xcp_keytype->comment = msg;
+# else
+	xcp_keytype->desc[0] = "md5";
+	xcp_keytype->comment =
+		"set key type to use for authenticated requests (only md5 without OpenSSL)";
+# endif
+}
+
+
 /*
  * Obtain list of digest names
  */
-
-#if defined(OPENSSL) && !defined(HAVE_EVP_MD_DO_ALL_SORTED)
-# if defined(_MSC_VER) && OPENSSL_VERSION_NUMBER >= 0x10100000L
-#  define HAVE_EVP_MD_DO_ALL_SORTED
-# endif
-#endif
-
-#ifdef OPENSSL
-# ifdef HAVE_EVP_MD_DO_ALL_SORTED
-#  define K_PER_LINE	8
-#  define K_NL_PFX_STR	"\n    "
-#  define K_DELIM_STR	", "
+# ifdef OPENSSL
+#  ifdef HAVE_EVP_MD_DO_ALL_SORTED
+#   define	K_PER_LINE	8
+#   define	K_NL_PFX_STR	"\n    "
+#   define	K_DELIM_STR	", "
 
 struct hstate {
-	char *list;
-	char const **seen;
-	int idx;
+	char *		list;
+	char const **	seen;
+	int		idx;
 };
 
 
-#  ifndef BUILD_AS_LIB
+static char *
+list_digest_names(void)
+{
+	char* list = NULL;
+
+#ifdef OPENSSL
+# ifdef HAVE_EVP_MD_DO_ALL_SORTED
+	struct hstate hstate = { NULL, NULL, K_PER_LINE + 1 };
+
+	hstate.seen = emalloc_zero(sizeof(*hstate.seen));
+
+	INIT_SSL();
+	EVP_MD_do_all_sorted(&list_md_fn, &hstate);
+	list = hstate.list;
+	free((void*)hstate.seen);
+
+	list = insert_cmac(list);	/* Insert CMAC into SSL digests list */
+# else
+	my_easprintf(&list, "md5, others (upgrade to OpenSSL-1.0 for full list)");
+# endif
+#else
+	my_easprintf(&list, "md5");
+#endif
+	return list;
+}
+
+
 static void
 list_md_fn(const EVP_MD *m, const char *from, const char *to, void *arg)
 {
@@ -3942,59 +3966,107 @@ list_md_fn(const EVP_MD *m, const char *from, const char *to, void *arg)
 		return; /* Ignore aliases */
 	}
 
-	/* Discard MACs that NTP won't accept. */
-	/* Keep this consistent with keytype_from_text() in ssl_init.c. */
-	if (EVP_MD_size(m) > MAX_MDG_LEN) {
-		return;
-	}
-
 	name = EVP_MD_name(m);
 	len = strlen(name) + 1;
 
 	/* There are duplicates.  Discard if name has been seen. */
-
-	for (seen = hstate->seen; *seen; seen++)
-		if (!strcasecmp(*seen, name))
+	for (seen = hstate->seen; *seen; seen++) {
+		if (!strcasecmp(*seen, name)) {
 			return;
+		}
+	}
 
+	if (!digest_alg_works(m, name)) {
+		return;
+	}
 	n = (seen - hstate->seen) + 2;
 	hstate->seen = erealloc((void *)hstate->seen, n * sizeof(*seen));
 	hstate->seen[n-2] = name;
 	hstate->seen[n-1] = NULL;
 
-	if (hstate->list != NULL)
+	if (hstate->list != NULL) {
 		len += strlen(hstate->list);
-
+	}
 	len += (hstate->idx >= K_PER_LINE)
-	    ? strlen(K_NL_PFX_STR)
-	    : strlen(K_DELIM_STR);
+		? strlen(K_NL_PFX_STR)
+		: strlen(K_DELIM_STR);
 
 	if (hstate->list == NULL) {
-		hstate->list = (char *)emalloc(len);
+		hstate->list = emalloc(len);
 		hstate->list[0] = '\0';
 	} else {
-		hstate->list = (char *)erealloc(hstate->list, len);
+		hstate->list = erealloc(hstate->list, len);
 	}
 
-	sprintf(hstate->list + strlen(hstate->list), "%s%s",
+	snprintf(hstate->list + strlen(hstate->list), len, "%s%s",
 		((hstate->idx >= K_PER_LINE) ? K_NL_PFX_STR : K_DELIM_STR),
 		name);
 
-	if (hstate->idx >= K_PER_LINE)
+	if (hstate->idx >= K_PER_LINE) {
 		hstate->idx = 1;
-	else
+	} else {
 		hstate->idx++;
+	}
 }
-#  endif /* !defined(BUILD_AS_LIB) */
 
-#  ifndef BUILD_AS_LIB
+/*
+ * digest_alg_works()
+ * Determine which of the OpenSSL-enumerated digest algorithms actually
+ * work in this installation.  Use of FIPS OpenSSL will make that a subset.
+ */
+static bool
+digest_alg_works(
+	const EVP_MD *	m,
+	const char *	name
+	)
+{
+	u_char		test_pkt[sizeof(pay_u)];
+	const size_t	pay_len = MIN_V4_PKT_LEN;
+	void *		vp_pkt;
+	pay_u *		pp_pkt;
+	u_int		i;
+	const u_char *	secret;
+	size_t		secret_len;
+	int		nid;
+	size_t		mac_len;
+	bool		works;
+
+	/* Auth'd NTP packet sizes must be a multiple of 4 */
+	DEBUG_REQUIRE(0 == sizeof(test_pkt) % sizeof(u_int32));
+	vp_pkt = test_pkt;
+	pp_pkt = vp_pkt;
+
+	/* fill test payload with noise */
+	for (i = 0; i < pay_len / sizeof(pp_pkt->ui[0]); i++) {
+		pp_pkt->ui[i] = (u_int32)ntp_random();
+	}
+
+	/* arbitrarily use the program name as the irrelevant test key */
+	secret = (const u_char *)progname;
+	secret_len = strlen(progname);
+
+	/* don't log digest errors for this use */
+	suppress_digest_errors = TRUE;
+	nid = EVP_MD_type(m);
+	mac_len = MD5authencrypt(nid, secret, secret_len, pp_pkt->ui, pay_len);
+	works = (0 != mac_len);
+	if (works) {
+		works = MD5authdecrypt(nid, secret, secret_len, pp_pkt->ui, pay_len, 
+				       mac_len, 1);
+	}
+	suppress_digest_errors = FALSE;
+
+	return works;
+}
+
+
 /* Insert CMAC into SSL digests list */
 static char *
 insert_cmac(char *list)
 {
-#ifdef ENABLE_CMAC
-	int insert;
-	size_t len;
+#   ifdef ENABLE_CMAC
+	bool	insert;
+	size_t	len;
 
 
 	/* If list empty, we need to insert CMAC on new line */
@@ -4090,52 +4162,17 @@ insert_cmac(char *list)
 			}
 		} /* insert */
 	} /* List not empty */
-#endif /*ENABLE_CMAC*/
+#   endif /* ENABLE_CMAC */
 	return list;
 }
-#  endif /* !defined(BUILD_AS_LIB) */
-# endif
-#endif
+#  endif	/* OPENSSL */
+# endif		/* HAVE_EVP_MD_DO_ALL_SORTED */
+#endif		/* !BUILD_AS_LIB */
 
-
-#ifndef BUILD_AS_LIB
-static char *
-list_digest_names(void)
-{
-	char *list = NULL;
-
-#ifdef OPENSSL
-# ifdef HAVE_EVP_MD_DO_ALL_SORTED
-	struct hstate hstate = { NULL, NULL, K_PER_LINE+1 };
-
-	/* replace calloc(1, sizeof(const char *)) */
-	hstate.seen = emalloc_zero(sizeof(const char*));
-
-	INIT_SSL();
-	EVP_MD_do_all_sorted(list_md_fn, &hstate);
-	list = hstate.list;
-	free((void *)hstate.seen);
-
-	list = insert_cmac(list);	/* Insert CMAC into SSL digests list */
-
-# else
-	list = (char *)emalloc(sizeof("md5, others (upgrade to OpenSSL-1.0 for full list)"));
-	strcpy(list, "md5, others (upgrade to OpenSSL-1.0 for full list)");
-# endif
-#else
-	list = (char *)emalloc(sizeof("md5"));
-	strcpy(list, "md5");
-#endif
-
-	return list;
-}
-#endif /* !defined(BUILD_AS_LIB) */
 
 #define CTRLC_STACK_MAX 4
-static volatile size_t		ctrlc_stack_len = 0;
-static volatile Ctrl_C_Handler	ctrlc_stack[CTRLC_STACK_MAX];
-
-
+static volatile NTP_ATOMIC u_int32		ctrlc_stack_len;
+static volatile NTP_ATOMIC Ctrl_C_Handler	ctrlc_stack[CTRLC_STACK_MAX];
 
 int/*BOOL*/
 push_ctrl_c_handler(
@@ -4143,7 +4180,8 @@ push_ctrl_c_handler(
 	)
 {
 	size_t size = ctrlc_stack_len;
-	if (func && (size < CTRLC_STACK_MAX)) {
+
+	if (NULL != func && size < COUNTOF(ctrlc_stack)) {
 		ctrlc_stack[size] = func;
 		ctrlc_stack_len = size + 1;
 		return TRUE;
@@ -4156,25 +4194,32 @@ pop_ctrl_c_handler(
 	Ctrl_C_Handler func
 	)
 {
-	size_t size = ctrlc_stack_len;
-	if (size) {
-		--size;
-		if (func == NULL || func == ctrlc_stack[size]) {
-			ctrlc_stack_len = size;
+	u_int32 len = ctrlc_stack_len;
+	if (len > 0) {
+		--len;
+		if (func == NULL || func == ctrlc_stack[len]) {
+			ctrlc_stack_len = len;
 			return TRUE;
 		}
 	}
 	return FALSE;
 }
 
+/*
+ * on_ctrlc() is in signal-handler context on POSIX systems, and
+ * in a transient thread on Windows (not the initial/main thread).
+ */
 #ifndef BUILD_AS_LIB
 static void
 on_ctrlc(void)
 {
-	size_t size = ctrlc_stack_len;
-	while (size)
-		if ((*ctrlc_stack[--size])())
+	u_int32 idx = ctrlc_stack_len;
+
+	while (idx > 0) {
+		if ((*ctrlc_stack[--idx])()) {
 			break;
+		}
+	}
 }
 #endif /* !defined(BUILD_AS_LIB) */
 
@@ -4189,13 +4234,13 @@ my_easprintf(
 	va_list	va;
 	int	prc;
 	size_t	len = 128;
-	char *	buf = emalloc(len);
+	char *	buf = NULL;
 
   again:
 	/* Note: we expect the memory allocation to fail long before the
 	 * increment in buffer size actually overflows.
 	 */
-	buf = (buf) ? erealloc(buf, len) : emalloc(len);
+	buf = erealloc(buf, len);
 
 	va_start(va, fmt);
 	prc = vsnprintf(buf, len, fmt, va);

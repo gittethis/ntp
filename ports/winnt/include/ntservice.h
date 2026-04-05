@@ -21,6 +21,15 @@
 #define NTP_DISPLAY_NAME "NetworkTimeProtocol"
 #define NTP_SERVICE_NAME "ntpd"
 
+typedef union ft_ull {
+	FILETIME ft;
+	ULONGLONG ull;
+	LONGLONG ll;
+	LARGE_INTEGER li;
+} FT_ULL;
+
+extern volatile ULONGLONG PerfCtrFreq;
+
 void ntservice_init(void);
 void ntservice_isup(void);
 void UpdateSCM(DWORD);

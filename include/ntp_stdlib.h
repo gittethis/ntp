@@ -13,11 +13,10 @@
 #include "l_stdlib.h"
 #include "lib_strbuf.h"
 #include "ntp_md5.h"
-#include "ntp_net.h"
 #include "ntp_debug.h"
 #include "ntp_malloc.h"
-#include "lib_strbuf.h"
 #include "ntp_string.h"
+#include "ntp_net.h"
 #include "ntp_syslog.h"
 #include "ntp_keyacc.h"
 
@@ -53,6 +52,18 @@ extern	int	xvsbprintf(char **, char * const, char const *, va_list)
 				NTP_PRINTF(3, 0);
 extern	int	xsbprintf(char **, char * const, char const *, ...)
 				NTP_PRINTF(3, 4);
+
+/*
+ * min, min3 and max.  Makes it easier to transliterate the spec without
+ * thinking about it.
+ */
+#ifndef min
+#define	min(a,b)	(((a) < (b)) ? (a) : (b))
+#endif
+#ifndef max
+#define	max(a,b)	(((a) > (b)) ? (a) : (b))
+#endif
+#define	min3(a,b,c)	min(min((a),(b)), (c))
 
 #define SAVE_ERRNO(stmt)				\
 	{						\
@@ -111,10 +122,10 @@ extern	int	ymd2yd		(int, int, int);
 
 /* a_md5encrypt.c */
 extern	size_t	MD5authencrypt	(int type, const u_char *key, size_t klen,
-				 u_int32 *pkt, size_t length);
-extern	int	MD5authdecrypt	(int type, const u_char *key, size_t klen,
-				 u_int32 *pkt, size_t length, size_t size,
-				 keyid_t keyno);
+				 u_int32 *pkt, size_t input_size);
+extern	bool	MD5authdecrypt	(int type, const u_char *key, size_t klen,
+				 u_int32 *pkt, size_t length,
+				 size_t mac_size, keyid_t keyno);
 extern	u_int32	addr2refid	(sockaddr_u *);
 
 /* authkeys.c */
@@ -169,8 +180,6 @@ extern	int	hextoint	(const char *, u_long *);
 extern	const char *	humanlogtime	(void);
 extern	const char *	humantime	(time_t);
 extern int	sau_from_string	(const char *, u_short, sockaddr_u *);
-extern	char *	mfptoa		(u_int32, u_int32, short);
-extern	char *	mfptoms		(u_int32, u_int32, short);
 extern	const char * modetoa	(size_t);
 extern	const char * eventstr	(int);
 extern	const char * ceventstr	(int);
@@ -184,11 +193,12 @@ extern	sockaddr_u * netof	(sockaddr_u *);
 extern	char *	numtoa		(u_int32);
 extern	const char * socktoa	(const sockaddr_u *);
 extern	const char * sockporttoa(const sockaddr_u *);
+extern	const char * sockmasktoa(const sockaddr_u *addr,
+				 const sockaddr_u *mask);
 extern	u_short	sock_hash	(const sockaddr_u *);
 extern	int	sockaddr_masktoprefixlen(const sockaddr_u *);
 extern	const char * socktohost	(const sockaddr_u *);
 extern	int	octtoint	(const char *, u_long *);
-extern	u_long	ranp2		(int);
 extern	const char *refnumtoa	(const sockaddr_u *);
 extern	const char *refid_str	(u_int32, int);
 
@@ -206,6 +216,9 @@ extern	void	rereadkeys	(void);
 /*
  * Variable declarations for libntp.
  */
+
+/* a_md5encrypt.c */
+extern bool	suppress_digest_errors;	/* for digest_alg_works() */
 
 /* authkeys.c */
 extern u_long	authkeynotfound;	/* keys not found */

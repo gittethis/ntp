@@ -25,6 +25,9 @@
   *
   * Note comparisons should be made using <, >, <=, or >= as there are
   * other revisions released between major versions.
+  * 
+  * See also:
+  * https://learn.microsoft.com/en-us/cpp/porting/visual-cpp-what-s-new-2003-through-2015
   */
 
 #if defined(_MSC_VER) && _MSC_VER < 1400
@@ -57,7 +60,11 @@
  */
 #define __STDC__ 1
 
-/*
+#if defined(_MSC_VER) && _MSC_VER >= 1800	/* VC 12, VS 2013 */
+#define HAVE_STDBOOL_H
+#endif
+ 
+ /*
  * Enable the debug build of MS C runtime to dump leaks
  * at exit time (currently only if run under a debugger).
  */
@@ -182,6 +189,8 @@ extern int tty_open(const char *, int, int);
 #ifdef in_addr6
 #define WANT_IPV6
 #define ISC_PLATFORM_HAVEIPV6
+#define s6_addr16 s6_words
+#define HAVE_STRUCT_IN6_ADDR_S6_ADDR16
 #define ISC_PLATFORM_HAVESCOPEID
 #define HAVE_STRUCT_SOCKADDR_STORAGE
 #define ISC_PLATFORM_HAVEIN6PKTINFO
@@ -286,7 +295,6 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 /*
  * punt on fchmod on Windows
  */
-#define fchmod(x,y)	{}
 #define lseek		_lseek
 #define pipe		_pipe
 #define dup2		_dup2
@@ -303,7 +311,9 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 /*
  * symbol returning the name of the current function
  */
+#ifndef __func__
 #define __func__	__FUNCTION__
+#endif
 
 typedef int	pid_t;	/* PID is an int */
 
@@ -348,6 +358,7 @@ typedef int	pid_t;	/* PID is an int */
 #define CLOCK_LOCAL
 #define CLOCK_NMEA
 #define CLOCK_ONCORE
+#define CLOCK_SHM
 #define CLOCK_PALISADE		/* from ntpd.mak */
 #define CLOCK_PARSE
 /* parse component drivers */
@@ -358,6 +369,7 @@ typedef int	pid_t;	/* PID is an int */
 #define CLOCK_RAWDCF
 #define CLOCK_RCC8000
 #define CLOCK_SCHMID
+#define CLOCK_SHM
 #define CLOCK_TRIMTAIP
 #define CLOCK_TRIMTSIP
 #define CLOCK_VARITEXT
@@ -375,7 +387,7 @@ typedef int	pid_t;	/* PID is an int */
 
 #define HAVE_LONG_LONG_INT		1
 #define HAVE_UNSIGNED_LONG_LONG_INT	1
-#define HAVE_SIZE_T             1     
+#define HAVE_SIZE_T			1
 #define HAVE_PTRDIFF_T  		1
 
 #if defined(_MSC_VER) && _MSC_VER >= 1900
@@ -399,6 +411,7 @@ typedef int	pid_t;	/* PID is an int */
 # define HAVE_SYS_TIME_H		1
 # define HAVE_TERMIOS_H			1
 
+# define HAVE__STRUPR			1
 # define HAVE_ALLOCA			1
 # define HAVE_GETCLOCK			1
 # define HAVE_MEMMOVE			1
@@ -551,6 +564,9 @@ typedef unsigned long uintptr_t;
 #define STR_PROCESSOR "x64"
 #endif
 
+#ifdef _M_ARM64
+#define STR_PROCESSOR "ARM64"
+#endif
 #endif /* !defined(STR_PROCESSOR) */
 
 #undef STRINGIZE
@@ -571,6 +587,21 @@ typedef unsigned long uintptr_t;
  * that can produce warnings on systems that declare exit() noreturn.
  */
 #define	NONEMPTY_TRANSLATION_UNIT	extern int abs(int);
+
+/*
+ * mprintf/msyslog expansion of %m prefers POSIX error strings for
+ * the low values which overlap between it and Windows ERROR_* codes.
+ * Sometimes we know we want the Windows error string, so we reach
+ * into libisc's win32\strerror.c for FormatError();
+ */
+extern char * FormatError(int error);
+
+/*
+ * Control message buffer size for retrieving SO_TIMESTAMP timestamps
+ * via WSARecvMsg().  The value is a QueryPerformanceCounter() stamp,
+ * unlike POSIX.  SO_TIMESTAMP Windows docs indicate u_int64.
+ */
+#define CMSG_BUFSIZE	WSA_CMSG_SPACE(sizeof(u_int64))
 
 /*
  * Below this line are includes which must happen after the bulk of

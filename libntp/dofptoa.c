@@ -1,32 +1,29 @@
 /*
- * dofptoa - do the grunge work to convert an fp number to ascii
+ * dofptoa - do the grunge work to convert a 16:16 fp number to ascii
  */
 #include <config.h>
 #include <stdio.h>
 
 #include "ntp_fp.h"
 #include "ntp_stdlib.h"
+#include "ntp_assert.h"
 
 char *
 dofptoa(
-	u_fp fpv,
-	char sign,
-	short ndec,
-	int msec
+	u_fp	fpv,
+	char	sign,	/* 0, '-', or '+' */
+	short	ndec,
+	int	msec	/* BOOL units are msecs not secs */
 	)
 {
-	register u_char *cp, *cpend;
-	register u_long val;
-	register short dec;
-	u_char cbuf[12];
-	u_char *cpdec;
-	char *buf;
-	char *bp;
-
-	/*
-	 * Get a string buffer before starting
-	 */
-	LIB_GETBUF(buf);
+	u_char *	cp;
+	u_char *	cpend;
+	u_fp		val;
+	short		dec;
+	u_char		cbuf[12];
+	u_char *	cpdec;
+	char *		buf;
+	char *		bp;
 
 	/*
 	 * Zero out the buffer
@@ -43,17 +40,17 @@ dofptoa(
 	/*
 	 * If we have to, decode the integral part
 	 */
-	if (!(val & 0xffff0000))
-	    cp--;
-	else {
-		register u_short sv = (u_short)(val >> 16);
-		register u_short tmp;
-		register u_short ten = 10;
+	if (!(val & 0xffff0000)) {
+		cp--;
+	} else {
+		const u_short	ushrt_10 = 10;
+		u_short		sv = val >> 16;
+		u_short		tmp;
 
 		do {
 			tmp = sv;
-			sv = (u_short) (sv/ten);
-			*(--cp) = (u_char)(tmp - ((sv<<3) + (sv<<1)));
+			sv /= ushrt_10;
+			*(--cp) = (u_char)(tmp - ((sv << 3) + (sv << 1)));
 		} while (sv != 0);
 	}
 
@@ -62,27 +59,26 @@ dofptoa(
 	 */
 	if (msec) {
 		dec = (short)(ndec + 3);
-		if (dec < 3)
-		    dec = 3;
+		dec = max(3, dec);
 		cpdec = &cbuf[8];
 	} else {
+		DEBUG_REQUIRE(0 <= ndec && ndec <= 6);
 		dec = ndec;
 		cpdec = cpend;
 	}
 
-	if (dec > 6)
-	    dec = 6;
-	
-	if (dec > 0) {
-		do {
-			val &= 0xffff;
-			val = (val << 3) + (val << 1);
-			*cpend++ = (u_char)(val >> 16);
-		} while (--dec > 0);
+	dec = min(dec, 6);
+
+	while (dec > 0) {
+		val &= 0xffff;
+		val = (val << 3) + (val << 1);	/* val *= 10 */
+		*cpend++ = (u_char)(val >> 16);
+		--dec;
 	}
 
 	if (val & 0x8000) {
-		register u_char *tp;
+		u_char *tp;
+
 		/*
 		 * Round it. Ick.
 		 */
@@ -93,65 +89,49 @@ dofptoa(
 			*(--tp) += 1;
 		}
 	}
-
 	/*
 	 * Remove leading zeroes if necessary
 	 */
-	while (cp < (cpdec -1) && *cp == 0)
-	    cp++;
-	
+	while (cp < (cpdec - 1) && *cp == 0) {
+		cp++;
+	}
 	/*
 	 * Copy it into the buffer, asciizing as we go.
 	 */
-	bp = buf;
-	if (sign)
-	    *bp++ = sign;
-	
+	buf = bp = lib_getbuf();
+	if (sign != 0) {
+		*bp++ = sign;
+	}
 	while (cp < cpend) {
-		if (cp == cpdec)
-		    *bp++ = '.';
+		if (cp == cpdec) {
+			*bp++ = '.';
+		}
 		*bp++ = (char)(*cp++ + '0');
 	}
 	*bp = '\0';
+
 	return buf;
 }
 
 
 char *
-fptoa(
-	s_fp	fpv,
-	short	ndec
+sfptoa(
+	s_fp	sfp,
+	short	ndec,
+	int	msec
 	)
 {
 	u_fp	plusfp;
 	int	neg;
+	char	sign;
 
-	neg = (fpv < 0);
+	neg = (sfp < 0);
 	if (neg) {
-		plusfp = (u_fp)(-fpv);
+		plusfp = (u_fp)(-sfp);
+		sign = '-';
 	} else {
-		plusfp = (u_fp)fpv;
+		plusfp = (u_fp)sfp;
+		sign = 0;
 	}
-
-	return dofptoa(plusfp, (neg?'-':0), ndec, FALSE);
-}
-
-
-char *
-fptoms(
-	s_fp	fpv,
-	short	ndec
-	)
-{
-	u_fp	plusfp;
-	int	neg;
-
-	neg = (fpv < 0);
-	if (neg) {
-		plusfp = (u_fp)(-fpv);
-	} else {
-		plusfp = (u_fp)fpv;
-	}
-
-	return dofptoa(plusfp, (neg?'-':0), ndec, TRUE);
+	return dofptoa(plusfp, sign, ndec, msec);
 }
