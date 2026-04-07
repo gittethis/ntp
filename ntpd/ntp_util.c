@@ -374,6 +374,11 @@ stats_config(
 
 	if (!ExpandEnvironmentStrings(invalue, newvalue, MAX_PATH)) {
 		switch (item) {
+		case STATS_DUMPFOLDER:
+			strlcpy(parameter, "STATS_DUMPFOLDER",
+				sizeof(parameter));
+			break;
+
 		case STATS_FREQ_FILE:
 			strlcpy(parameter, "STATS_FREQ_FILE",
 				sizeof(parameter));

@@ -4216,6 +4216,12 @@ config_vars(
 			stats_config(STATS_FREQ_FILE, curr_var->value.s, TRUE);
 			break;
 
+		case T_Ntsdumpdir:
+			if ('\0' == curr_var->value.s[0])
+				msyslog(LOG_INFO, "config: ntsdumpdir disabled");
+			stats_config(STATS_DUMPFOLDER, curr_var->value.s, TRUE);
+			break;
+
 		case T_Dscp:
 			/* DSCP is in the upper 6 bits of the IP TOS/DS field */
 			qos = curr_var->value.i << 2;

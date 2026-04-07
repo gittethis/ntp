@@ -48,6 +48,7 @@ struct key_tok ntp_keywords[] = {
 { "device",		T_Device,		FOLLBY_STRING },
 { "disable",		T_Disable,		FOLLBY_TOKEN },
 { "driftfile",		T_Driftfile,		FOLLBY_STRING },
+{ "ntsdumpdir",		T_Ntsdumpdir,		FOLLBY_STRING },
 { "dscp",		T_Dscp,			FOLLBY_TOKEN },
 { "enable",		T_Enable,		FOLLBY_TOKEN },
 { "end",		T_End,			FOLLBY_TOKEN },
@@ -184,6 +185,7 @@ struct key_tok ntp_keywords[] = {
 { "notrap",		T_Notrap,		FOLLBY_TOKEN },
 { "notrust",		T_Notrust,		FOLLBY_TOKEN },
 { "ntpport",		T_Ntpport,		FOLLBY_TOKEN },
+{ "ntsrefresh",		T_Ntsrefresh,		FOLLBY_TOKEN },
 /* discard_option */
 { "average",		T_Average,		FOLLBY_TOKEN },
 { "minimum",		T_Minimum,		FOLLBY_TOKEN },
@@ -309,7 +311,7 @@ int main(int argc, char** argv)
 		exit(1);
 	}
 	debug = 1;
-
+	init_lib();
 	populate_symb(argv[1]);
 
 	generate_preamble();

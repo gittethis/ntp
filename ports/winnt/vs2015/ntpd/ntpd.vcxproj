@@ -78,7 +78,7 @@
     <_ProjectFileVersion>12.0.30501.0</_ProjectFileVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>D:\ntp-stable-dlh-260328\sqlite;$(IncludePath)</IncludePath>
+    <IncludePath>D:\ntp\sqlite;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>D:\ntp-stable-dlh-260328\sqlite;$(IncludePath)</IncludePath>
@@ -89,7 +89,7 @@
       <HeaderFileName />
     </Midl>
     <ClCompile>
-      <AdditionalIncludeDirectories>..\..\ntpd;..\..\..\..\ntpd;D:\ntp-stable-dlh-260328\sqlite;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\ntpd;..\..\..\..\ntpd;D:\ntp\sqlite;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <ResourceCompile>
       <Culture>0x0409</Culture>
@@ -127,7 +127,7 @@
       <AdditionalLibraryDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\ntp-stable-dlh-260328\sqlite;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <Link>
-      <AdditionalLibraryDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\ntp-stable-dlh-260328\sqlite;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\ntp\sqlite;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

@@ -105,6 +105,8 @@
 %token	<Integer>	T_Dispersion
 %token	<Double>	T_Double		/* not a token */
 %token	<Integer>	T_Driftfile
+%token	<Integer>	T_Ntsdumpdir
+%token	<Integer>	T_Ntsrefresh
 %token	<Integer>	T_Drop
 %token	<Integer>	T_Dscp
 %token	<Integer>	T_Ellipsis	/* "..." not "ellipsis" */
@@ -979,6 +981,7 @@ access_control_flag
 	|	T_Notrust
 	|	T_Ntpport
 	|	T_Version
+	|	T_Ntsrefresh
 	;
 
 discard_option_list
@@ -1342,6 +1345,10 @@ miscellaneous_command
 			{ lex_flush_stack(); }
 	|	T_Driftfile drift_parm
 			{ /* see drift_parm below for actions */ }
+	|	T_Ntsrefresh refresh_parm
+			{ /* see refresh below for actions */ }
+	|	T_Ntsdumpdir dumpdir_parm
+			{ /* see dumpdir_parm below for actions */ }
 	|	T_Logconfig log_config_list
 			{ CONCAT_G_FIFOS(cfgt.logconfig, $2); }
 	|	T_Phone string_list
@@ -1436,6 +1443,46 @@ drift_parm
 				APPEND_G_FIFO(cfgt.vars, av);
 			} else {
 				yyerror("driftfile remote configuration ignored");
+			}
+		}
+	;
+
+
+refresh_parm
+        :       T_Double
+                {
+                        if (lex_from_file()) {
+                                attr_val *av;
+                                av = create_attr_dval(T_Ntsrefresh, $1);
+                                APPEND_G_FIFO(cfgt.vars, av);
+                        } /*else {
+                                YYFREE($1);
+                                yyerror("ntsrefresh remote configuration ignored");
+                        }*/
+                }
+
+	;
+
+dumpdir_parm
+	:	T_String
+		{
+			if (lex_from_file()) {
+				attr_val *av;
+				av = create_attr_sval(T_Ntsdumpdir, $1);
+				APPEND_G_FIFO(cfgt.vars, av);
+			} else {
+				YYFREE($1);
+				yyerror("ntsdumpdir remote configuration ignored");
+			}
+		}
+	|	/* Null ntsdumpdir,  indicated by empty string "" */
+		{
+			if (lex_from_file()) {
+				attr_val *av;
+				av = create_attr_sval(T_Ntsdumpdir, estrdup(""));
+				APPEND_G_FIFO(cfgt.vars, av);
+			} else {
+				yyerror("ntsdumpdir remote configuration ignored");
 			}
 		}
 	;
