@@ -1038,6 +1038,7 @@ nts_build_schannel_alpn_list(const char* proto, uint8_t** buf, size_t* len)
 	return 1;
 }
 
+/*
 int
 nts_perform_client_handshake(SOCKET s, const char* hostUtf8,TlsClientContext* tls)
 {
@@ -1341,8 +1342,367 @@ nts_perform_client_handshake(SOCKET s, const char* hostUtf8,TlsClientContext* tl
 	}
 
 	return 1;
-}
+}*/
+int
+nts_perform_client_handshake(SOCKET s, const char* hostUtf8, TlsClientContext* tls)
+{
+	TimeStamp tsExpiry;
+	TLS_PARAMETERS tlsParams;
+	SCH_CREDENTIALS cred;
+	SECURITY_STATUS ss;
+	DWORD ctxReq;
+	DWORD ctxAttr;
+	SecBuffer outBuffers[2];
+	SecBufferDesc outDesc;
+	uint8_t* alpnBuf;
+	size_t alpnBufLen;
+	SecBuffer alpnInBuffers[1];
+	SecBufferDesc alpnInDesc;
+	char* inbuf;
+	size_t inbufCap;
+	size_t inData;
+	int got;
 
+	if (tls == NULL || hostUtf8 == NULL)
+		return 0;
+
+	tls->sock = s;
+
+	ZERO(tsExpiry);
+
+	ZERO(tlsParams);
+	tlsParams.cAlpnIds = 0;
+	tlsParams.rgstrAlpnIds = NULL;
+	tlsParams.grbitDisabledProtocols =
+		SP_PROT_SSL3_CLIENT |
+		SP_PROT_TLS1_0_CLIENT |
+		SP_PROT_TLS1_1_CLIENT |
+		SP_PROT_TLS1_2_CLIENT;
+	tlsParams.cDisabledCrypto = 0;
+	tlsParams.pDisabledCrypto = NULL;
+	tlsParams.dwFlags = 0;
+
+	ZERO(cred);
+	cred.dwVersion = SCH_CREDENTIALS_VERSION;
+	cred.dwCredFormat = 0;
+	cred.cCreds = 0;
+	cred.paCred = NULL;
+	cred.hRootStore = NULL;
+	cred.cMappers = 0;
+	cred.aphMappers = NULL;
+	cred.dwSessionLifespan = 0;
+	cred.dwFlags =
+		SCH_USE_STRONG_CRYPTO |
+		SCH_CRED_NO_DEFAULT_CREDS |
+		SCH_CRED_MANUAL_CRED_VALIDATION;
+	cred.cTlsParameters = 1;
+	cred.pTlsParameters = &tlsParams;
+
+	ss = AcquireCredentialsHandleA(NULL,
+		(SEC_CHAR*)UNISP_NAME_A,
+		SECPKG_CRED_OUTBOUND,
+		NULL,
+		&cred,
+		NULL,
+		NULL,
+		&tls->hCred,
+		&tsExpiry);
+	if (ss != SEC_E_OK) {
+		PrintSecError("AcquireCredentialsHandleA", ss);
+		return 0;
+	}
+	tls->haveCred = 1;
+
+	ctxReq =
+		ISC_REQ_SEQUENCE_DETECT |
+		ISC_REQ_REPLAY_DETECT |
+		ISC_REQ_CONFIDENTIALITY |
+		ISC_REQ_EXTENDED_ERROR |
+		ISC_REQ_ALLOCATE_MEMORY |
+		ISC_REQ_STREAM;
+
+	ctxAttr = 0;
+
+	ZERO(outBuffers);
+	ZERO(outDesc);
+	outDesc.ulVersion = SECBUFFER_VERSION;
+	outDesc.cBuffers = 2;
+	outDesc.pBuffers = outBuffers;
+
+	outBuffers[0].BufferType = SECBUFFER_TOKEN;
+	outBuffers[0].pvBuffer = NULL;
+	outBuffers[0].cbBuffer = 0;
+
+	outBuffers[1].BufferType = SECBUFFER_ALERT;
+	outBuffers[1].pvBuffer = NULL;
+	outBuffers[1].cbBuffer = 0;
+
+	alpnBuf = NULL;
+	alpnBufLen = 0;
+	if (!nts_build_schannel_alpn_list("ntske/1", &alpnBuf, &alpnBufLen)) {
+		msyslog(LOG_ERR,
+			"nts_perform_client_handshake: failed to build ALPN list");
+		return 0;
+	}
+
+	ZERO(alpnInBuffers);
+	ZERO(alpnInDesc);
+	alpnInDesc.ulVersion = SECBUFFER_VERSION;
+	alpnInDesc.cBuffers = 1;
+	alpnInDesc.pBuffers = alpnInBuffers;
+
+	alpnInBuffers[0].BufferType = SECBUFFER_APPLICATION_PROTOCOLS;
+	alpnInBuffers[0].pvBuffer = alpnBuf;
+	alpnInBuffers[0].cbBuffer = (ULONG)alpnBufLen;
+
+	ss = InitializeSecurityContextA(&tls->hCred,
+		NULL,
+		(SEC_CHAR*)hostUtf8,
+		ctxReq,
+		0,
+		0,
+		&alpnInDesc,
+		0,
+		&tls->hCtx,
+		&outDesc,
+		&ctxAttr,
+		NULL);
+
+	free(alpnBuf);
+	alpnBuf = NULL;
+	alpnBufLen = 0;
+
+	if (ss != SEC_I_CONTINUE_NEEDED && ss != SEC_E_OK) {
+		PrintSecError("InitializeSecurityContextA (initial)", ss);
+		return 0;
+	}
+
+	tls->haveCtx = 1;
+	tls->ctxReq = ctxReq;
+	if (!nts_str_set(&tls->hostUtf8, hostUtf8)) {
+		msyslog(LOG_ERR,
+			"nts_perform_client_handshake: failed to store host name");
+		return 0;
+	}
+
+	if (outBuffers[0].pvBuffer != NULL && outBuffers[0].cbBuffer > 0) {
+		if (!nts_tls_send_all(tls->sock,
+			outBuffers[0].pvBuffer,
+			outBuffers[0].cbBuffer)) {
+			FreeContextBuffer(outBuffers[0].pvBuffer);
+			outBuffers[0].pvBuffer = NULL;
+			return 0;
+		}
+		FreeContextBuffer(outBuffers[0].pvBuffer);
+		outBuffers[0].pvBuffer = NULL;
+	}
+
+	if (ss == SEC_E_OK) {
+		/* Handshake completed in one shot. */
+		tls->encBufLen = 0;
+
+		ss = QueryContextAttributesA(&tls->hCtx,
+			SECPKG_ATTR_STREAM_SIZES,
+			&tls->sizes);
+		if (ss != SEC_E_OK) {
+			PrintSecError("QueryContextAttributesA (STREAM_SIZES)", ss);
+			return 0;
+		}
+
+		{
+			SecPkgContext_ApplicationProtocol appProto;
+			SECURITY_STATUS qss;
+
+			ZERO(appProto);
+			qss = QueryContextAttributesA(&tls->hCtx,
+				SECPKG_ATTR_APPLICATION_PROTOCOL,
+				&appProto);
+
+			if (qss == SEC_E_OK) {
+				msyslog(LOG_INFO,
+					"nts_perform_client_handshake: ALPN status=%d ext=%d idSize=%d",
+					(int)appProto.ProtoNegoStatus,
+					(int)appProto.ProtoNegoExt,
+					(int)appProto.ProtocolIdSize);
+			}
+			else {
+				msyslog(LOG_INFO,
+					"nts_perform_client_handshake: ALPN query failed: 0x%08lx",
+					(unsigned long)qss);
+			}
+		}
+
+		return 1;
+	}
+
+	inbufCap = 64 * 1024;
+	inbuf = (char*)malloc(inbufCap);
+	if (inbuf == NULL) {
+		msyslog(LOG_ERR,
+			"nts_perform_client_handshake: malloc failed");
+		return 0;
+	}
+	inData = 0;
+
+	for (;;) {
+		SecBuffer inBuffers[2];
+		SecBufferDesc inDesc;
+
+		if (inData == inbufCap) {
+			msyslog(LOG_ERR,
+				"nts_perform_client_handshake: input buffer full");
+			free(inbuf);
+			return 0;
+		}
+
+		got = recv(tls->sock, inbuf + inData, (int)(inbufCap - inData), 0);
+		if (got == SOCKET_ERROR) {
+			msyslog(LOG_ERR,
+				"nts_perform_client_handshake: recv failed: %d",
+				WSAGetLastError());
+			free(inbuf);
+			return 0;
+		}
+		if (got == 0) {
+			msyslog(LOG_ERR,
+				"nts_perform_client_handshake: peer closed during handshake");
+			free(inbuf);
+			return 0;
+		}
+
+		inData += (size_t)got;
+
+		ZERO(inBuffers);
+		ZERO(inDesc);
+		inDesc.ulVersion = SECBUFFER_VERSION;
+		inDesc.cBuffers = 2;
+		inDesc.pBuffers = inBuffers;
+
+		inBuffers[0].BufferType = SECBUFFER_TOKEN;
+		inBuffers[0].pvBuffer = inbuf;
+		inBuffers[0].cbBuffer = (ULONG)inData;
+
+		inBuffers[1].BufferType = SECBUFFER_EMPTY;
+		inBuffers[1].pvBuffer = NULL;
+		inBuffers[1].cbBuffer = 0;
+
+		outBuffers[0].BufferType = SECBUFFER_TOKEN;
+		outBuffers[0].pvBuffer = NULL;
+		outBuffers[0].cbBuffer = 0;
+
+		outBuffers[1].BufferType = SECBUFFER_ALERT;
+		outBuffers[1].pvBuffer = NULL;
+		outBuffers[1].cbBuffer = 0;
+
+		ss = InitializeSecurityContextA(&tls->hCred,
+			&tls->hCtx,
+			(SEC_CHAR*)hostUtf8,
+			ctxReq,
+			0,
+			0,
+			&inDesc,
+			0,
+			&tls->hCtx,
+			&outDesc,
+			&ctxAttr,
+			NULL);
+
+		if (outBuffers[0].pvBuffer != NULL && outBuffers[0].cbBuffer > 0) {
+			if (!nts_tls_send_all(tls->sock,
+				outBuffers[0].pvBuffer,
+				outBuffers[0].cbBuffer)) {
+				FreeContextBuffer(outBuffers[0].pvBuffer);
+				outBuffers[0].pvBuffer = NULL;
+				free(inbuf);
+				return 0;
+			}
+			FreeContextBuffer(outBuffers[0].pvBuffer);
+			outBuffers[0].pvBuffer = NULL;
+		}
+
+		if (ss == SEC_E_INCOMPLETE_MESSAGE) {
+			msyslog(LOG_INFO,
+				"nts_perform_client_handshake: incomplete handshake message, inData=%lu",
+				(u_long)inData);
+			continue;
+		}
+
+		if (ss == SEC_E_OK) {
+			if (inBuffers[1].BufferType == SECBUFFER_EXTRA) {
+				size_t extra = inBuffers[1].cbBuffer;
+				memmove(inbuf, inbuf + (inData - extra), extra);
+				inData = extra;
+			}
+			else {
+				inData = 0;
+			}
+			break;
+		}
+
+		if (ss == SEC_I_CONTINUE_NEEDED) {
+			if (inBuffers[1].BufferType == SECBUFFER_EXTRA) {
+				size_t extra = inBuffers[1].cbBuffer;
+				memmove(inbuf, inbuf + (inData - extra), extra);
+				inData = extra;
+			}
+			else {
+				inData = 0;
+			}
+			continue;
+		}
+
+		PrintSecError("InitializeSecurityContextA (loop)", ss);
+		free(inbuf);
+		return 0;
+	}
+
+	if (inData > 0) {
+		if (!nts_charbuf_reserve(&tls->encBuf, &tls->encBufCap, inData)) {
+			free(inbuf);
+			return 0;
+		}
+		memcpy(tls->encBuf, inbuf, inData);
+		tls->encBufLen = inData;
+	}
+	else {
+		tls->encBufLen = 0;
+	}
+
+	free(inbuf);
+
+	ss = QueryContextAttributesA(&tls->hCtx,
+		SECPKG_ATTR_STREAM_SIZES,
+		&tls->sizes);
+	if (ss != SEC_E_OK) {
+		PrintSecError("QueryContextAttributesA (STREAM_SIZES)", ss);
+		return 0;
+	}
+
+	{
+		SecPkgContext_ApplicationProtocol appProto;
+		SECURITY_STATUS qss;
+
+		ZERO(appProto);
+		qss = QueryContextAttributesA(&tls->hCtx,
+			SECPKG_ATTR_APPLICATION_PROTOCOL,
+			&appProto);
+
+		if (qss == SEC_E_OK) {
+			msyslog(LOG_INFO,
+				"nts_perform_client_handshake: ALPN status=%d ext=%d idSize=%d",
+				(int)appProto.ProtoNegoStatus,
+				(int)appProto.ProtoNegoExt,
+				(int)appProto.ProtocolIdSize);
+		}
+		else {
+			msyslog(LOG_INFO,
+				"nts_perform_client_handshake: ALPN query failed: 0x%08lx",
+				(unsigned long)qss);
+		}
+	}
+
+	return 1;
+}
 
 static int nts_tls_handle_renegotiate(TlsClientContext* tls)
 {
