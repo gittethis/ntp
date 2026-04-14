@@ -4141,7 +4141,8 @@ peer_xmit(
 
 	//NTS--todo / add
 	if (peer->flags & FLAG_NTS) {
-		msyslog(LOG_INFO, "NTS:peer_xmit---has NTS_FLAG");
+		//msyslog(LOG_INFO, "NTS:peer_xmit---has NTS_FLAG");
+		DPRINTF(3, ("NTS:peer_xmit -- has NTS_FLAG\n"));
 		(void)nts_run_peer_sync(peer);
 		return;
 	}

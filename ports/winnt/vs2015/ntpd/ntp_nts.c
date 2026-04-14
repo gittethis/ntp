@@ -1519,16 +1519,16 @@ nts_perform_client_handshake(SOCKET s, const char* hostUtf8, TlsClientContext* t
 				&appProto);
 
 			if (qss == SEC_E_OK) {
-				msyslog(LOG_INFO,
-					"nts_perform_client_handshake: ALPN status=%d ext=%d idSize=%d",
+				DPRINTF(3, (
+					"nts_perform_client_handshake: ALPN status=%d ext=%d idSize=%d\n",
 					(int)appProto.ProtoNegoStatus,
 					(int)appProto.ProtoNegoExt,
-					(int)appProto.ProtocolIdSize);
+					(int)appProto.ProtocolIdSize));
 			}
 			else {
-				msyslog(LOG_INFO,
-					"nts_perform_client_handshake: ALPN query failed: 0x%08lx",
-					(unsigned long)qss);
+				DPRINTF(3, (
+					"nts_perform_client_handshake: ALPN query failed: 0x%08lx\n",
+					(unsigned long)qss));
 			}
 		}
 
@@ -1621,9 +1621,9 @@ nts_perform_client_handshake(SOCKET s, const char* hostUtf8, TlsClientContext* t
 		}
 
 		if (ss == SEC_E_INCOMPLETE_MESSAGE) {
-			msyslog(LOG_INFO,
-				"nts_perform_client_handshake: incomplete handshake message, inData=%lu",
-				(u_long)inData);
+			DPRINTF(3, (
+				"nts_perform_client_handshake: incomplete handshake message, inData=%lu\n",
+				(u_long)inData));
 			continue;
 		}
 
@@ -1688,16 +1688,16 @@ nts_perform_client_handshake(SOCKET s, const char* hostUtf8, TlsClientContext* t
 			&appProto);
 
 		if (qss == SEC_E_OK) {
-			msyslog(LOG_INFO,
-				"nts_perform_client_handshake: ALPN status=%d ext=%d idSize=%d",
+			DPRINTF(3, (
+				"nts_perform_client_handshake: ALPN status=%d ext=%d idSize=%d\n",
 				(int)appProto.ProtoNegoStatus,
 				(int)appProto.ProtoNegoExt,
-				(int)appProto.ProtocolIdSize);
+				(int)appProto.ProtocolIdSize));
 		}
 		else {
-			msyslog(LOG_INFO,
-				"nts_perform_client_handshake: ALPN query failed: 0x%08lx",
-				(unsigned long)qss);
+			DPRINTF(3, (
+				"nts_perform_client_handshake: ALPN query failed: 0x%08lx\n",
+				(unsigned long)qss));
 		}
 	}
 
@@ -2190,9 +2190,9 @@ nts_parse_nts_ke_response(const char* response, size_t responseLen,NtsKeParsed* 
 			pos += bodyLen;
 
 			if (pos < len) {
-				msyslog(LOG_INFO,
-					"nts_parse_nts_ke_response: ignoring %lu trailing bytes after End record",
-					(unsigned long)(len - pos));
+				DPRINTF(3, (
+					"nts_parse_nts_ke_response: ignoring %lu trailing bytes after End record\n",
+					(unsigned long)(len - pos)));
 			}
 
 			return 1;
@@ -2486,7 +2486,7 @@ void log_hex_prefix(const char* tag, const uint8_t* p, size_t n)
 	line[0] = '\0';
 
 	if (p == NULL || n == 0) {
-		msyslog(LOG_INFO, "%s: <empty>", tag);
+		DPRINTF(3, ("%s: <empty>\n", tag));
 		return;
 	}
 
@@ -2498,11 +2498,11 @@ void log_hex_prefix(const char* tag, const uint8_t* p, size_t n)
 		q += wrote;
 	}
 
-	msyslog(LOG_INFO, "%s (%lu bytes shown of %lu): %s",
+	DPRINTF(3, ("%s (%lu bytes shown of %lu): %s\n",
 		tag,
 		(unsigned long)m,
 		(unsigned long)n,
-		line);
+		line));
 }
 
 
@@ -3271,9 +3271,9 @@ nts_update_cookies_in_session(const NtsKeContext* ctx)
 		goto done;
 	}
 
-	msyslog(LOG_INFO,
-		"nts_update_cookies_in_session: refreshed cookies saved to: %s",
-		(dbPath != NULL) ? dbPath : "(unknown)");
+	DPRINTF(3, (
+		"nts_update_cookies_in_session: refreshed cookies saved to: %s\n",
+		(dbPath != NULL) ? dbPath : "(unknown)"));
 
 	ok = 1;
 
@@ -3353,10 +3353,10 @@ nts_parse_decrypted_inner_efs(const uint8_t* decryptedInner,size_t decryptedInne
 			/*
 			 * Ignore other decrypted inner EF types for now.
 			 */
-			msyslog(LOG_INFO,
-				"nts_parse_decrypted_inner_efs: ignoring inner EF type 0x%04x len=%lu",
+			DPRINTF(3, (
+				"nts_parse_decrypted_inner_efs: ignoring inner EF type 0x%04x len=%lu\n",
 				(unsigned)fieldType,
-				(unsigned long)bodyLen);
+				(unsigned long)bodyLen));
 		}
 
 		pos += fieldLen;
@@ -3605,17 +3605,23 @@ int nts_aead_seal(uint16_t aeadId,
 	aead_seal_result_free(out);
 	aead_seal_result_init(out);
 
-	msyslog(LOG_INFO,
+	/*msyslog(LOG_INFO,
 		"nts_aead_seal: AEAD=%u key=%lu aad=%lu pt=%lu",
 		(unsigned)aeadId,
 		(unsigned long)keyLen,
 		(unsigned long)associatedDataLen,
-		(unsigned long)plaintextLen);
+		(unsigned long)plaintextLen);*/
+
+	DPRINTF(3, ("nts_aead_seal: AEAD=%u key=%lu aad=%lu pt=%lu\n", (unsigned)aeadId,
+		(unsigned long)keyLen,
+		(unsigned long)associatedDataLen,
+		(unsigned long)plaintextLen));
 
 	cipher = nts_get_cipher(aeadId);
 	if (cipher == NULL) {
-		msyslog(LOG_ERR,
-			"nts_aead_seal: unsupported AEAD ID or AES-SIV cipher not available");
+		/*msyslog(LOG_ERR,
+			"nts_aead_seal: unsupported AEAD ID or AES-SIV cipher not available");*/
+		DPRINTF(3, ("nts_aead_seal: unsupported AEAD ID or AES-SIV cipher not available\n"));
 		return 0;
 	}
 
@@ -3624,8 +3630,9 @@ int nts_aead_seal(uint16_t aeadId,
 	ctx = EVP_CIPHER_CTX_new();
 	if (ctx == NULL) {
 		EVP_CIPHER_free(cipher);
-		msyslog(LOG_ERR,
-			"nts_aead_seal: EVP_CIPHER_CTX_new failed");
+		/*msyslog(LOG_ERR,
+			"nts_aead_seal: EVP_CIPHER_CTX_new failed");*/
+		DPRINTF(3, ("nts_aead_seal: EVP_CIPHER_CTX_new failed\n"));
 		return 0;
 	}
 
@@ -3640,35 +3647,40 @@ int nts_aead_seal(uint16_t aeadId,
 
 	do {
 		if (keyLen != cipherKeyLen) {
-			msyslog(LOG_ERR,
+			/*msyslog(LOG_ERR,
 				"nts_aead_seal: unexpected key size got=%lu expected=%lu",
 				(unsigned long)keyLen,
-				(unsigned long)cipherKeyLen);
+				(unsigned long)cipherKeyLen);*/
+			DPRINTF(3, ("nts_aead_seal: unexpected key size got=%lu expected=%lu",
+				(unsigned long)keyLen,
+				(unsigned long)cipherKeyLen));
 			break;
 		}
 
 		if (!nts_buf_reserve(&out->nonce, &out->nonceCap, 16)) {
-			msyslog(LOG_ERR,
-				"nts_aead_seal: nonce allocation failed");
+			/*msyslog(LOG_ERR,
+				"nts_aead_seal: nonce allocation failed");*/
+			DPRINTF(3, ("nts_aead_seal: nonce allocation failed\n"));
 			break;
 		}
 		out->nonceLen = 16;
 
 		if (!nts_fill_random(out->nonce, out->nonceLen)) {
-			msyslog(LOG_ERR,
-				"nts_aead_seal: FillRandom(nonce) failed");
+			/*msyslog(LOG_ERR,
+				"nts_aead_seal: FillRandom(nonce) failed");*/
+			DPRINTF(3, ("nts_aead_seal: FillRandom(nonce) failed\n"));
 			break;
 		}
 
 		if (EVP_EncryptInit_ex(ctx, cipher, NULL, NULL, NULL) != 1) {
-			msyslog(LOG_ERR,
-				"nts_aead_seal: EVP_EncryptInit_ex(phase1) failed");
+			DPRINTF(3, (
+				"nts_aead_seal: EVP_EncryptInit_ex(phase1) failed\n"));
 			break;
 		}
 
 		if (EVP_EncryptInit_ex(ctx, NULL, NULL, key, NULL) != 1) {
-			msyslog(LOG_ERR,
-				"nts_aead_seal: EVP_EncryptInit_ex(set key) failed");
+			DPRINTF(3, (
+				"nts_aead_seal: EVP_EncryptInit_ex(set key) failed\n"));
 			break;
 		}
 
@@ -3678,8 +3690,8 @@ int nts_aead_seal(uint16_t aeadId,
 				&tmpLen,
 				associatedData,
 				(int)associatedDataLen) != 1) {
-				msyslog(LOG_ERR,
-					"nts_aead_seal: EVP_EncryptUpdate(AAD) failed");
+				DPRINTF(3, (
+					"nts_aead_seal: EVP_EncryptUpdate(AAD) failed\n"));
 				break;
 			}
 		}
@@ -3692,14 +3704,14 @@ int nts_aead_seal(uint16_t aeadId,
 			&tmpLen,
 			out->nonce,
 			(int)out->nonceLen) != 1) {
-			msyslog(LOG_ERR,
-				"nts_aead_seal: EVP_EncryptUpdate(nonce as AAD) failed");
+			DPRINTF(3, (
+				"nts_aead_seal: EVP_EncryptUpdate(nonce as AAD) failed\n"));
 			break;
 		}
 
 		if (!nts_buf_reserve(&rawCiphertext, &rawCiphertextCap, plaintextLen)) {
-			msyslog(LOG_ERR,
-				"nts_aead_seal: rawCiphertext allocation failed");
+			DPRINTF(3, (
+				"nts_aead_seal: rawCiphertext allocation failed\n"));
 			break;
 		}
 
@@ -3709,8 +3721,8 @@ int nts_aead_seal(uint16_t aeadId,
 				&outLen,
 				plaintext,
 				(int)plaintextLen) != 1) {
-				msyslog(LOG_ERR,
-					"nts_aead_seal: EVP_EncryptUpdate(plaintext) failed");
+				DPRINTF(3, (
+					"nts_aead_seal: EVP_EncryptUpdate(plaintext) failed\n"));
 				break;
 			}
 		}
@@ -3720,8 +3732,8 @@ int nts_aead_seal(uint16_t aeadId,
 				&outLen,
 				&dummyIn,
 				0) != 1) {
-				msyslog(LOG_ERR,
-					"nts_aead_seal: EVP_EncryptUpdate(empty plaintext) failed");
+				DPRINTF(3, (
+					"nts_aead_seal: EVP_EncryptUpdate(empty plaintext) failed\n"));
 				break;
 			}
 			outLen = 0;
@@ -3730,8 +3742,8 @@ int nts_aead_seal(uint16_t aeadId,
 		rawCiphertextLen = (size_t)outLen;
 
 		if (EVP_EncryptFinal_ex(ctx, NULL, &tmpLen) != 1) {
-			msyslog(LOG_ERR,
-				"nts_aead_seal: EVP_EncryptFinal_ex failed");
+			DPRINTF(3, (
+				"nts_aead_seal: EVP_EncryptFinal_ex failed\n"));
 			break;
 		}
 
@@ -3739,8 +3751,8 @@ int nts_aead_seal(uint16_t aeadId,
 			EVP_CTRL_AEAD_GET_TAG,
 			16,
 			siv) != 1) {
-			msyslog(LOG_ERR,
-				"nts_aead_seal: EVP_CTRL_AEAD_GET_TAG failed");
+			DPRINTF(3, (
+				"nts_aead_seal: EVP_CTRL_AEAD_GET_TAG failed\n"));
 			break;
 		}
 
@@ -3750,8 +3762,8 @@ int nts_aead_seal(uint16_t aeadId,
 		if (!nts_buf_reserve(&out->ciphertext,
 			&out->ciphertextCap,
 			16 + rawCiphertextLen)) {
-			msyslog(LOG_ERR,
-				"nts_aead_seal: ciphertext allocation failed");
+			DPRINTF(3, (
+				"nts_aead_seal: ciphertext allocation failed\n"));
 			break;
 		}
 
@@ -3760,10 +3772,10 @@ int nts_aead_seal(uint16_t aeadId,
 			memcpy(out->ciphertext + 16, rawCiphertext, rawCiphertextLen);
 		out->ciphertextLen = 16 + rawCiphertextLen;
 
-		msyslog(LOG_INFO,
-			"nts_aead_seal: success nonce=%lu ciphertext=%lu",
+		DPRINTF(3, (
+			"nts_aead_seal: success nonce=%lu ciphertext=%lu\n",
 			(unsigned long)out->nonceLen,
-			(unsigned long)out->ciphertextLen);
+			(unsigned long)out->ciphertextLen));
 
 		ok = 1;
 	} while (0);
@@ -3771,13 +3783,13 @@ int nts_aead_seal(uint16_t aeadId,
 	if (!ok) {
 		e = ERR_get_error();
 		if (e != 0) {
-			msyslog(LOG_ERR,
-				"nts_aead_seal: OpenSSL error: %s",
-				ERR_error_string(e, NULL));
+			DPRINTF(3, (
+				"nts_aead_seal: OpenSSL error: %s\n",
+				ERR_error_string(e, NULL)));
 		}
 		else {
-			msyslog(LOG_ERR,
-				"nts_aead_seal: failed");
+			DPRINTF(3, (
+				"nts_aead_seal: failed\n"));
 		}
 		aead_seal_result_free(out);
 		aead_seal_result_init(out);
@@ -3818,13 +3830,13 @@ int nts_aead_open(uint16_t aeadId,
 	if (key == NULL || nonce == NULL || ciphertext == NULL)
 		return 0;
 
-	msyslog(LOG_INFO,
-		"nts_aead_open: AEAD=%u key=%lu aad=%lu nonce=%lu ct=%lu",
+	DPRINTF(3, (
+		"nts_aead_open: AEAD=%u key=%lu aad=%lu nonce=%lu ct=%lu\n",
 		(unsigned)aeadId,
 		(unsigned long)keyLen,
 		(unsigned long)associatedDataLen,
 		(unsigned long)nonceLen,
-		(unsigned long)ciphertextLen);
+		(unsigned long)ciphertextLen));
 
 	if (ciphertextLen < 16) {
 		msyslog(LOG_ERR,
@@ -4061,11 +4073,11 @@ int nts_append_nts_authenticator_ef(uint8_t** packet,
 			bodyLen))
 			break;
 
-		msyslog(LOG_INFO,
-			"nts_append_nts_authenticator_ef: nonceLen=%lu ctLen=%lu extraPadding=%lu",
+		DPRINTF(3, (
+			"nts_append_nts_authenticator_ef: nonceLen=%lu ctLen=%lu extraPadding=%lu\n",
 			(unsigned long)nonceLen,
 			(unsigned long)ciphertextLen,
-			(unsigned long)extraPadding);
+			(unsigned long)extraPadding));
 
 		ok = 1;
 	} while (0);
@@ -4654,9 +4666,9 @@ NtpSyncOutcome nts_do_authenticated_ntp_sync(NtsKeContext* ctx)
 		goto done;
 	}
 
-	msyslog(LOG_INFO,
-		"nts_do_authenticated_ntp_sync: received UDP NTP response: %lu bytes",
-		(unsigned long)udpResponseLen);
+	DPRINTF(3, (
+		"nts_do_authenticated_ntp_sync: received UDP NTP response: %lu bytes\n",
+		(unsigned long)udpResponseLen));
 
 	if (!nts_parse_ntp_response_outer(udpResponse, udpResponseLen, &parsed)) {
 		msyslog(LOG_ERR, "nts_do_authenticated_ntp_sync: nts_parse_ntp_response_outer failed");
@@ -4730,11 +4742,11 @@ NtpSyncOutcome nts_do_authenticated_ntp_sync(NtsKeContext* ctx)
 		goto done;
 	}
 
-	msyslog(LOG_INFO,
-		"nts_do_authenticated_ntp_sync: authenticated NTP response verified successfully");
-	msyslog(LOG_INFO,
-		"nts_do_authenticated_ntp_sync: decrypted inner EF bytes: %lu",
-		(unsigned long)decryptedInnerLen);
+	DPRINTF(3, (
+		"nts_do_authenticated_ntp_sync: authenticated NTP response verified successfully\n"));
+	DPRINTF(3, (
+		"nts_do_authenticated_ntp_sync: decrypted inner EF bytes: %lu\n",
+		(unsigned long)decryptedInnerLen));
 
 	if (!nts_parse_decrypted_inner_efs(decryptedInner, decryptedInnerLen, &parsed)) {
 		msyslog(LOG_ERR, "nts_do_authenticated_ntp_sync: nts_parse_decrypted_inner_efs failed");
@@ -4752,12 +4764,12 @@ NtpSyncOutcome nts_do_authenticated_ntp_sync(NtsKeContext* ctx)
 		ctx->cookieCount--;
 	}
 
-	msyslog(LOG_INFO,
-		"nts_do_authenticated_ntp_sync: cookies left after consume: %lu",
-		(unsigned long)ctx->cookieCount);
-	msyslog(LOG_INFO,
-		"nts_do_authenticated_ntp_sync: returned cookies: %lu",
-		(unsigned long)parsed.returnedCookieCount);
+	DPRINTF(3, (
+		"nts_do_authenticated_ntp_sync: cookies left after consume: %lu\n",
+		(unsigned long)ctx->cookieCount));
+	DPRINTF(3, (
+		"nts_do_authenticated_ntp_sync: returned cookies: %lu\n",
+		(unsigned long)parsed.returnedCookieCount));
 
 	for (i = 0; i < parsed.returnedCookieCount; i++) {
 		if (!nts_cookie_array_add(&ctx->cookies,
@@ -4784,16 +4796,16 @@ NtpSyncOutcome nts_do_authenticated_ntp_sync(NtsKeContext* ctx)
 	for (i = 0; i < ctx->cookieCount; i++) {
 		char* hx = nts_bytes_to_hex(ctx->cookies[i], ctx->cookieLens[i], 8);
 		if (hx != NULL) {
-			msyslog(LOG_INFO,
-				"nts_do_authenticated_ntp_sync: Cookie[%lu] %s",
-				(unsigned long)i, hx);
+			DPRINTF(3, (
+				"nts_do_authenticated_ntp_sync: Cookie[%lu] %s\n",
+				(unsigned long)i, hx));
 			free(hx);
 		}
 	}
 
 	if (!nts_update_cookies_in_session(ctx)) {
-		msyslog(LOG_INFO,
-			"nts_do_authenticated_ntp_sync: failed to update the local cookie store");
+		DPRINTF(3, (
+			"nts_do_authenticated_ntp_sync: failed to update the local cookie store\n"));
 	}
 
 	if (!nts_parse_authenticated_ntp_header_times(udpResponse, udpResponseLen, &hdrTimes)) {
@@ -4817,15 +4829,15 @@ NtpSyncOutcome nts_do_authenticated_ntp_sync(NtsKeContext* ctx)
 		hdrTimes.t3_transmit,
 		times.t4);
 
-	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: T1 client send    = %.9f", times.t1);
-	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: T2 server receive = %.9f", hdrTimes.t2_receive);
-	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: T3 server xmit    = %.9f", hdrTimes.t3_transmit);
-	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: T4 client recv    = %.9f", times.t4);
+	DPRINTF(3, ("nts_do_authenticated_ntp_sync: T1 client send    = %.9f\n", times.t1));
+	DPRINTF(3, ("nts_do_authenticated_ntp_sync: T2 server receive = %.9f\n", hdrTimes.t2_receive));
+	DPRINTF(3, ("nts_do_authenticated_ntp_sync: T3 server xmit    = %.9f\n", hdrTimes.t3_transmit));
+	DPRINTF(3, ("nts_do_authenticated_ntp_sync: T4 client recv    = %.9f\n", times.t4));
 
-	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: Offset (sec) = %.9f", sync.offsetSeconds);
-	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: Delay  (sec) = %.9f", sync.delaySeconds);
-	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: Offset (ms)  = %.6f", sync.offsetSeconds * 1000.0);
-	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: Delay  (ms)  = %.6f", sync.delaySeconds * 1000.0);
+	/*msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: Offset (sec) = %.9f", sync.offsetSeconds);
+	msyslog(LOG_INFO, "nts_do_authenticated_ntp_sync: Delay  (sec) = %.9f", sync.delaySeconds);*/
+	DPRINTF(3, ("nts_do_authenticated_ntp_sync: Offset (ms)  = %.6f\n", sync.offsetSeconds * 1000.0));
+	DPRINTF(3, ("nts_do_authenticated_ntp_sync: Delay  (ms)  = %.6f\n", sync.delaySeconds * 1000.0));
 
 	outcome.result = NTP_SYNC_RESULT_SUCCESS;
 	outcome.offsetSeconds = sync.offsetSeconds;
@@ -5009,9 +5021,10 @@ int nts_run_peer_sync(struct peer* peer)
 			goto done;
 		}
 
-		msyslog(LOG_INFO,
+		/*msyslog(LOG_INFO,
 			"nts_run_peer_sync: loaded cached NTS session from %s",
-			(dbPath != NULL) ? dbPath : "(unknown)");
+			(dbPath != NULL) ? dbPath : "(unknown)");*/
+		DPRINTF(3, ("nts_run_peer_sync: loaded cached NTS session from %s\n",(dbPath != NULL) ? dbPath : "(unknown)"));
 
 		cachedOutcome = nts_do_authenticated_ntp_sync(ctx);
 
@@ -5055,8 +5068,8 @@ int nts_run_peer_sync(struct peer* peer)
 		}
 	}
 	else if (storedTooOld) {
-		msyslog(LOG_INFO,
-			"nts_run_peer_sync: cached NTS session is too old; forcing fresh NTS-KE");
+		DPRINTF(3, (
+			"nts_run_peer_sync: cached NTS session is too old; forcing fresh NTS-KE\n"));
 
 		nts_delete_session_from_sqlite(ctx->ntsKeHost);
 		nts_clear_runtime_session(ctx);
@@ -5065,8 +5078,8 @@ int nts_run_peer_sync(struct peer* peer)
 				;
 	}
 
-	msyslog(LOG_INFO,
-		"nts_run_peer_sync: no usable cached session; performing fresh NTS-KE");
+	DPRINTF(3, (
+		"nts_run_peer_sync: no usable cached session; performing fresh NTS-KE\n"));
 
 	if (!nts_refresh_session(ctx)) {
 		msyslog(LOG_ERR,
@@ -5174,7 +5187,7 @@ int nts_perform_nts_ke_handshake(NtsKeContext* ctx)
 	nts_ke_parsed_init(&parsed);
 	ok = 0;
 
-	msyslog(LOG_INFO, "nts_perform_nts_ke_handshake: starting NTS-KE request");
+	DPRINTF(3, ("nts_perform_nts_ke_handshake: starting NTS-KE request\n"));
 
 	do {
 		if (!nts_tls_send_encrypted(&ctx->tls, ntskeRequest, sizeof(ntskeRequest))) {
@@ -5183,8 +5196,8 @@ int nts_perform_nts_ke_handshake(NtsKeContext* ctx)
 			break;
 		}
 
-		msyslog(LOG_INFO,
-			"nts_perform_nts_ke_handshake: request sent, waiting for response");
+		DPRINTF(3, (
+			"nts_perform_nts_ke_handshake: request sent, waiting for response\n"));
 
 		if (!nts_tls_recv_encrypted(&ctx->tls, &response, &responseLen)) {
 			msyslog(LOG_ERR,
@@ -5198,9 +5211,9 @@ int nts_perform_nts_ke_handshake(NtsKeContext* ctx)
 			break;
 		}
 
-		msyslog(LOG_INFO,
-			"nts_perform_nts_ke_handshake: response received: %lu bytes",
-			(unsigned long)responseLen);
+		DPRINTF(3, (
+			"nts_perform_nts_ke_handshake: response received: %lu bytes\n",
+			(unsigned long)responseLen));
 
 		if (!nts_parse_nts_ke_response((const char*)response, responseLen, &parsed)) {
 			msyslog(LOG_ERR,
@@ -5254,11 +5267,11 @@ int nts_perform_nts_ke_handshake(NtsKeContext* ctx)
 
 		ctx->negotiatedNtpPort = parsed.ntpPort;
 
-		msyslog(LOG_INFO,
-			"nts_perform_nts_ke_handshake: parsed successfully. AEAD=%u Cookies=%lu NTPPort=%u",
+		DPRINTF(3, (
+			"nts_perform_nts_ke_handshake: parsed successfully. AEAD=%u Cookies=%lu NTPPort=%u\n",
 			(unsigned)ctx->negotiatedAead,
 			(unsigned long)ctx->cookieCount,
-			(unsigned)ctx->negotiatedNtpPort);
+			(unsigned)ctx->negotiatedNtpPort));
 
 		if (!nts_export_keying_material(&ctx->tls,
 			ctx->negotiatedAead,
@@ -5282,10 +5295,10 @@ int nts_perform_nts_ke_handshake(NtsKeContext* ctx)
 			break;
 		}
 
-		msyslog(LOG_INFO,
-			"nts_perform_nts_ke_handshake: C2S key size=%lu S2C key size=%lu",
+		DPRINTF(3, (
+			"nts_perform_nts_ke_handshake: C2S key size=%lu S2C key size=%lu\n",
 			(unsigned long)ctx->c2sKeyLen,
-			(unsigned long)ctx->s2cKeyLen);
+			(unsigned long)ctx->s2cKeyLen));
 
 		ok = 1;
 	} while (0);
@@ -5351,8 +5364,8 @@ nts_refresh_session(NtsKeContext* ctx)
 			break;
 		}
 
-		msyslog(LOG_INFO,
-			"nts_refresh_session: TLS handshake succeeded");
+		DPRINTF(3, (
+			"nts_refresh_session: TLS handshake succeeded\n"));
 
 		if (!nts_perform_nts_ke_handshake(ctx)) {
 			msyslog(LOG_ERR,
