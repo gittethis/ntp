@@ -495,6 +495,11 @@ struct peer {
 #define FLAG_DISABLED	0x40000	/* peer is being torn down */
 #define FLAG_NTS        0x80000
 
+
+/*trying for pooling*/
+
+
+
 /*
  * Definitions for the clear() routine.  We use memset() to clear
  * the parts of the peer structure which go to zero.  These are
@@ -794,7 +799,7 @@ struct pkt {
 #define STATS_STATSDIR		2	/* directory prefix for stats files */
 #define	STATS_PID_FILE		3	/* configure ntpd PID file */
 #define	STATS_LEAP_FILE		4	/* configure ntpd leapseconds file */
-#define	STATS_DUMPFOLDER	5	/* configure ntsdumpdir folder */
+#define	STATS_NTSDUMPDIR   	5	/* configure ntsdumpdir folder */
 
 #define MJD_1900		15020	/* MJD for 1 Jan 1900 */
 

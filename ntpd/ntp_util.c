@@ -58,6 +58,7 @@ static char	  *leapfile_name;		/* leapseconds file name */
 static struct stat leapfile_stat;	/* leapseconds file stat() buffer */
 static int /*BOOL*/chck_leaphash = TRUE;
 char	*stats_drift_file;		/* frequency file name */
+char    *stats_ntsdumpdir;		/* ntsdumpdir name */
 static	char *stats_temp_file;		/* temp frequency file name */
 static double wander_resid;		/* last frequency update */
 double	wander_threshold = 1e-7;	/* initial frequency threshold */
@@ -374,8 +375,8 @@ stats_config(
 
 	if (!ExpandEnvironmentStrings(invalue, newvalue, MAX_PATH)) {
 		switch (item) {
-		case STATS_DUMPFOLDER:
-			strlcpy(parameter, "STATS_DUMPFOLDER",
+		case STATS_NTSDUMPDIR:
+			strlcpy(parameter, "STATS_NTSDUMPDIR",
 				sizeof(parameter));
 			break;
 
@@ -416,6 +417,36 @@ stats_config(
 #endif /* SYS_WINNT */
 
 	switch (item) {
+		/*
+		 * Specify ntsdumpdir directory.
+		 */
+	case STATS_NTSDUMPDIR:
+		if (!allow_config(STATS_NTSDUMPDIR, optflag)) {
+			break;
+		}
+		/* - 2 since value may be missing the DIR_SEP. */
+		len = strlen(value);
+		if (len > sizeof(statsdir) - 2) {
+			msyslog(LOG_ERR,
+				"ntsdumpdir %s too long (>%u)", value,
+				(u_int)sizeof(statsdir) - 2);
+			break;
+		}
+		/* Add a DIR_SEP unless we already have one. */
+		if (0 == len || DIR_SEP == value[len - 1]) {
+			dirsep_or_nul = '\0';
+		}
+		else {
+			dirsep_or_nul = DIR_SEP;
+		}
+		snprintf(statsdir, sizeof(statsdir), "%s%c",
+			value, dirsep_or_nul);
+		stats_ntsdumpdir = erealloc(stats_ntsdumpdir, len + 1);
+		memcpy(stats_ntsdumpdir, value, len + 1);
+		/*memcpy(stats_ntsdumpdir, value, len);
+		memcpy(stats_ntsdumpdir + len, temp_ext,
+			sizeof(temp_ext));*/
+		break;
 
 		/*
 		 * Open and read frequency file.

@@ -4219,7 +4219,7 @@ config_vars(
 		case T_Ntsdumpdir:
 			if ('\0' == curr_var->value.s[0])
 				msyslog(LOG_INFO, "config: ntsdumpdir disabled");
-			stats_config(STATS_DUMPFOLDER, curr_var->value.s, TRUE);
+			stats_config(STATS_NTSDUMPDIR, curr_var->value.s, TRUE);
 			break;
 
 		case T_Dscp:

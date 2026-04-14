@@ -112,6 +112,10 @@ getCmdOpts(
 	if (HAVE_OPT( STATSDIR ))
 	    stats_config(STATS_STATSDIR, OPT_ARG( STATSDIR ), 1);
 
+	if (HAVE_OPT(NTSDUMPDIR))
+		stats_config(STATS_NTSDUMPDIR, OPT_ARG( NTSDUMPDIR ), 1);
+
+
 	if (HAVE_OPT( TRUSTEDKEY )) {
 		int		ct = STACKCT_OPT(  TRUSTEDKEY );
 		const char**	pp = STACKLST_OPT( TRUSTEDKEY );

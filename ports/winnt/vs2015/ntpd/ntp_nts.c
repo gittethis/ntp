@@ -1524,6 +1524,11 @@ nts_perform_client_handshake(SOCKET s, const char* hostUtf8, TlsClientContext* t
 					(int)appProto.ProtoNegoStatus,
 					(int)appProto.ProtoNegoExt,
 					(int)appProto.ProtocolIdSize));
+				msyslog(LOG_INFO,
+					"nts_perform_client_handshake: ALPN status=%d ext=%d idSize=%d\n",
+					(int)appProto.ProtoNegoStatus,
+					(int)appProto.ProtoNegoExt,
+					(int)appProto.ProtocolIdSize);
 			}
 			else {
 				DPRINTF(3, (
@@ -1693,6 +1698,12 @@ nts_perform_client_handshake(SOCKET s, const char* hostUtf8, TlsClientContext* t
 				(int)appProto.ProtoNegoStatus,
 				(int)appProto.ProtoNegoExt,
 				(int)appProto.ProtocolIdSize));
+			//DEBUG_SERVICE_SEBASTIAN
+			msyslog(LOG_INFO,
+				"nts_perform_client_handshake: ALPN status=%d ext=%d idSize=%d\n",
+				(int)appProto.ProtoNegoStatus,
+				(int)appProto.ProtoNegoExt,
+				(int)appProto.ProtocolIdSize);
 		}
 		else {
 			DPRINTF(3, (
@@ -2038,8 +2049,8 @@ nts_exec_sql(sqlite3* db, const char* sql)
 int
 nts_build_host_db_path(const char* host, char** outPath)
 {
-	char tempPath[MAX_PATH + 1];
-	DWORD n;
+	//char tempPath[MAX_PATH + 1];
+	//DWORD n;
 	size_t folderLen;
 	char* folder;
 	char* safeHost;
@@ -2054,7 +2065,7 @@ nts_build_host_db_path(const char* host, char** outPath)
 	folder = NULL;
 	path = NULL;
 
-	ZERO(tempPath);
+	/*ZERO(tempPath);
 	n = GetTempPathA(MAX_PATH, tempPath);
 	if (n == 0 || n > MAX_PATH) {
 		msyslog(LOG_ERR,
@@ -2069,7 +2080,13 @@ nts_build_host_db_path(const char* host, char** outPath)
 		return 0;
 
 	strcpy(folder, tempPath);
-	strcat(folder, "NTSClient");
+	strcat(folder, "NTSClient");*/
+
+	folderLen = strlen(stats_ntsdumpdir);
+	folder = (char*)malloc(folderLen + 1);
+	if (folder == NULL)
+		return 0;
+	strcpy(folder, stats_ntsdumpdir);
 
 	if (!CreateDirectoryA(folder, NULL)) {
 		DWORD err = GetLastError();
@@ -3274,6 +3291,10 @@ nts_update_cookies_in_session(const NtsKeContext* ctx)
 	DPRINTF(3, (
 		"nts_update_cookies_in_session: refreshed cookies saved to: %s\n",
 		(dbPath != NULL) ? dbPath : "(unknown)"));
+	//DEBUG_SERVICE_SEBASTIAN
+	msyslog(LOG_INFO,
+		"nts_update_cookies_in_session: refreshed cookies saved to: %s\n",
+		(dbPath != NULL) ? dbPath : "(unknown)");
 
 	ok = 1;
 
@@ -5020,10 +5041,10 @@ int nts_run_peer_sync(struct peer* peer)
 			state = NTS_SERVICE_SYNC_FAILED;
 			goto done;
 		}
-
-		/*msyslog(LOG_INFO,
+		//DEBUG_SERVICE_SEBASTIAN
+		msyslog(LOG_INFO,
 			"nts_run_peer_sync: loaded cached NTS session from %s",
-			(dbPath != NULL) ? dbPath : "(unknown)");*/
+			(dbPath != NULL) ? dbPath : "(unknown)");
 		DPRINTF(3, ("nts_run_peer_sync: loaded cached NTS session from %s\n",(dbPath != NULL) ? dbPath : "(unknown)"));
 
 		cachedOutcome = nts_do_authenticated_ntp_sync(ctx);

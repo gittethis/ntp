@@ -320,6 +320,7 @@ extern	u_char	sys_automax;	/* session key timeout */
 #endif	/* AUTOKEY */
 
 /* ntp_util.c */
+extern  char* stats_ntsdumpdir;		/* ntsdumpdir name */
 extern	void	init_util	(void);
 extern	void	write_stats	(void);
 extern	void	stats_config	(int, const char *, int optflag);

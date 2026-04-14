@@ -110,7 +110,8 @@ typedef enum {
     INDEX_OPT_MDNS                   = 35,
     INDEX_OPT_VERSION                = 36,
     INDEX_OPT_HELP                   = 37,
-    INDEX_OPT_MORE_HELP              = 38
+    INDEX_OPT_MORE_HELP              = 38,
+    INDEX_OPT_NTSDUMPDIR             = 39
 } teOptIndex;
 /** count of all options for ntpd */
 #define OPTION_CT    39
