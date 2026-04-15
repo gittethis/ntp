@@ -522,6 +522,9 @@ free_peer(
 	if (p->hostname != NULL)
 		free(p->hostname);
 
+	if (p->fqdn != NULL)
+		free(p->fqdn);
+
 	if (p->ident != NULL)
 		free(p->ident);
 

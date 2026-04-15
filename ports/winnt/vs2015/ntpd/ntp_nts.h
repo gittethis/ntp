@@ -306,7 +306,7 @@ int nts_is_stored_session_usable(const NtsStoredSession* s);
 int nts_copy_stored_session_to_runtime(const NtsStoredSession* stored,NtsKeContext* ctx);
 int nts_parse_decrypted_inner_efs(const uint8_t* decryptedInner,size_t decryptedInnerLen,NtsResponseParsed* out);
 
-static int nts_tls_handle_renegotiate(TlsClientContext* tls, const char* hostUtf8);
+static int nts_tls_handle_renegotiate(TlsClientContext* tls);
 
 NtpComputedResult nts_compute_ntp_offset_delay(double t1,
 	double t2,

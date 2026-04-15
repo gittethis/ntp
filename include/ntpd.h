@@ -206,7 +206,7 @@ extern  void	set_peerdstadr	(struct peer *, endpt *);
 extern	struct peer *newpeer	(sockaddr_u *, const char *, endpt *,
 				 int, u_char, u_char, u_char, u_char,
 				 u_int, u_char, u_int32,
-				 keyid_t, const char *);
+				 keyid_t, const char *, const char *);
 extern	void	peer_all_reset	(void);
 extern	void	peer_clr_stats	(void);
 extern	struct peer *peer_config(sockaddr_u *, const char *, endpt *,
@@ -271,6 +271,9 @@ extern	void	init_proto	(void);
 extern	void	set_sys_tick_precision(double);
 extern	void	proto_config	(int, u_long, double, sockaddr_u *);
 extern	void	proto_clr_stats (void);
+#ifdef SYS_WINNT
+extern	int	nts_run_peer_sync(struct peer *);
+#endif
 
 /* ntp_refclock.c */
 #ifdef	REFCLOCK

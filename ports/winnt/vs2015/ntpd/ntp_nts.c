@@ -5011,13 +5011,14 @@ int nts_run_peer_sync(struct peer* peer)
 		return NTS_SERVICE_SYNC_FAILED;
 
 	ctx = &pctx->ke;
-	if (peer->fqdn != NULL && peer->fqdn[0] != '\0')
-	{
+	if (peer->fqdn != NULL && peer->fqdn[0] != '\0') {
 		ctx->ntsKeHost = strdup(peer->fqdn);
+	} else if (peer->hostname != NULL && peer->hostname[0] != '\0') {
+		ctx->ntsKeHost = strdup(peer->hostname);
 	}
 	if (ctx->ntsKeHost == NULL || ctx->ntsKeHost[0] == '\0') {
 		msyslog(LOG_ERR,
-			"nts_run_peer_sync: ntsKeHost is empty");
+			"nts_run_peer_sync: ntsKeHost is empty (fqdn/hostname missing)");
 		return NTS_SERVICE_SYNC_FAILED;
 	}
 

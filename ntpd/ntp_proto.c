@@ -89,7 +89,7 @@ nak_error_codes {
 /*
  * flag bits propagated from pool/manycast to individual peers
  */
-#define POOL_FLAG_PMASK		(FLAG_IBURST | FLAG_NOSELECT)
+#define POOL_FLAG_PMASK		(FLAG_IBURST | FLAG_NOSELECT | FLAG_NTS)
 
 /*
  * peer_select groups statistics for a peer used by clock_select() and
@@ -1499,7 +1499,8 @@ receive(
 			       r4a.ippeerlimit, MODE_CLIENT, hisversion,
 			       peer2->minpoll, peer2->maxpoll,
 			       (FLAG_PREEMPT | (POOL_FLAG_PMASK & peer2->flags)),
-			       cast_flags, 0, skeyid, sys_ident);
+			       cast_flags, 0, skeyid, sys_ident,
+			       peer2->fqdn);
 		if (NULL == peer) {
 			DPRINTF(2, ("receive: AM_MANYCAST drop: duplicate\n"));
 			sys_declined++;
@@ -1619,7 +1620,8 @@ receive(
 			peer = newpeer(&rbufp->recv_srcadr, NULL, match_ep,
 			    r4a.ippeerlimit, MODE_BCLIENT, hisversion,
 			    pkt->ppoll, pkt->ppoll,
-			    FLAG_PREEMPT, MDF_BCLNT, 0, skeyid, sys_ident);
+			    FLAG_PREEMPT, MDF_BCLNT, 0, skeyid, sys_ident,
+			    NULL);
 			if (NULL == peer) {
 				DPRINTF(2, ("receive: AM_NEWBCL drop: duplicate\n"));
 				sys_restricted++;
@@ -1644,7 +1646,7 @@ receive(
 			       r4a.ippeerlimit, MODE_CLIENT, hisversion,
 			       pkt->ppoll, pkt->ppoll,
 			       FLAG_BC_VOL | FLAG_IBURST | FLAG_PREEMPT, MDF_BCLNT,
-			       0, skeyid, sys_ident);
+			       0, skeyid, sys_ident, NULL);
 		if (NULL == peer) {
 			DPRINTF(2, ("receive: AM_NEWBCL drop: empty newpeer() failed\n"));
 			sys_restricted++;
@@ -1765,7 +1767,7 @@ receive(
 		if ((peer = newpeer(&rbufp->recv_srcadr, NULL, rbufp->dstadr,
 				    r4a.ippeerlimit, MODE_PASSIVE, hisversion,
 				    pkt->ppoll, NTP_MAXDPOLL, 0, MDF_UCAST, 0,
-				    skeyid, sys_ident)) == NULL) {
+				    skeyid, sys_ident, NULL)) == NULL) {
 			DPRINTF(2, ("receive: AM_NEWPASS drop: newpeer() failed\n"));
 			sys_declined++;
 			return;			/* ignore duplicate */
