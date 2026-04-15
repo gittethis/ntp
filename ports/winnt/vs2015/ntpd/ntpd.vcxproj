@@ -77,11 +77,12 @@
   <PropertyGroup>
     <_ProjectFileVersion>12.0.30501.0</_ProjectFileVersion>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>D:\ntp\sqlite;$(IncludePath)</IncludePath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>D:\ntp-stable-dlh-260328\sqlite;$(IncludePath)</IncludePath>
+  <PropertyGroup>
+    <SqliteLibDir Condition="'$(Platform)'=='Win32'">..\..\..\..\sqlite\x86</SqliteLibDir>
+    <SqliteLibDir Condition="'$(SqliteLibDir)'==''">..\..\..\..\sqlite</SqliteLibDir>
+    <SqliteLibName Condition="'$(SqliteLibName)'==''">sqlite3.lib</SqliteLibName>
+    <SqliteDllSource Condition="'$(Platform)'=='Win32'">$(MSBuildThisFileDirectory)..\..\..\..\sqlite\x86\sqlite3.dll</SqliteDllSource>
+    <SqliteDllSource Condition="'$(SqliteDllSource)'==''">$(MSBuildThisFileDirectory)..\..\..\..\sqlite\sqlite3.dll</SqliteDllSource>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <Midl>
@@ -95,7 +96,8 @@
       <Culture>0x0409</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>winmm.lib;sqlite3.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>winmm.lib;$(SqliteLibName);%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SqliteLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <SubSystem>Console</SubSystem>
     </Link>
     <Bscmake>
@@ -107,9 +109,6 @@
     <ResourceCompile>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ResourceCompile>
-    <Link>
-      <AdditionalLibraryDirectories Condition="'$(Configuration)|$(Platform)'=='Release|x64'">D:\ntp-stable-dlh-260328\sqlite;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-    </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='ReleaseXP'">
     <ResourceCompile>
@@ -120,15 +119,6 @@
     <ResourceCompile>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ResourceCompile>
-    <Link>
-      <AdditionalLibraryDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\ntp-stable-dlh-260328\sqlite;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-    </Link>
-    <Link>
-      <AdditionalLibraryDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\ntp-stable-dlh-260328\sqlite;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-    </Link>
-    <Link>
-      <AdditionalLibraryDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\ntp\sqlite;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-    </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\..\libparse\binio.c" />
@@ -337,6 +327,10 @@
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Target Name="CopySqliteDll" AfterTargets="Build" Condition="'$(ConfigurationType)'=='Application' and Exists('$(SqliteDllSource)')">
+    <Copy SourceFiles="$(SqliteDllSource)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
   <ImportGroup Label="ExtensionTargets">
+    <Import Project="..\build-fixes.targets" />
   </ImportGroup>
 </Project>

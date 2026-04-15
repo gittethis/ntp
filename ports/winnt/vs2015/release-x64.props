@@ -6,19 +6,24 @@
   <PropertyGroup>
     <_ProjectFileVersion>12.0.30501.0</_ProjectFileVersion>
     <_PropertySheetDisplayName>release-x64</_PropertySheetDisplayName>
+    <OpenSSL64VcpkgRoot Condition="'$(VsInstallRoot)' != ''">$(VsInstallRoot)\vcpkg</OpenSSL64VcpkgRoot>
+    <OpenSSL64IncDir Condition="'$(OPENSSL64_INC)' != ''">$(OPENSSL64_INC)</OpenSSL64IncDir>
+    <OpenSSL64IncDir Condition="'$(OpenSSL64IncDir)' == '' and Exists('$(OpenSSL64VcpkgRoot)\installed\x64-windows\include\openssl\evp.h')">$(OpenSSL64VcpkgRoot)\installed\x64-windows\include</OpenSSL64IncDir>
+    <OpenSSL64LibDir Condition="'$(OPENSSL64_LIB)' != ''">$(OPENSSL64_LIB)</OpenSSL64LibDir>
+    <OpenSSL64LibDir Condition="'$(OpenSSL64LibDir)' == '' and Exists('$(OpenSSL64VcpkgRoot)\installed\x64-windows\lib\libcrypto.lib')">$(OpenSSL64VcpkgRoot)\installed\x64-windows\lib</OpenSSL64LibDir>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
       <Optimization>Full</Optimization>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <WholeProgramOptimization>true</WholeProgramOptimization>
-      <AdditionalIncludeDirectories>$(OPENSSL64_INC);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OpenSSL64IncDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>NDEBUG;OPENSSL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <TargetMachine>MachineX64</TargetMachine>
-      <AdditionalLibraryDirectories>$(OPENSSL64_LIB)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(OpenSSL64LibDir)</AdditionalLibraryDirectories>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
     </Link>
     <Lib>

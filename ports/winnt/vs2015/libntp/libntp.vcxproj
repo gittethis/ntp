@@ -317,5 +317,6 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
+    <Import Project="..\build-fixes.targets" />
   </ImportGroup>
 </Project>

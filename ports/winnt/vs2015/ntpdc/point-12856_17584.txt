@@ -1,0 +1,2 @@
+#   minor version, empty prerelease, and set point=NEW.  UpdatePoint
+point=18

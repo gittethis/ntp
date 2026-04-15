@@ -3,19 +3,24 @@
   <PropertyGroup>
     <_ProjectFileVersion>12.0.30501.0</_ProjectFileVersion>
     <_PropertySheetDisplayName>release-x86</_PropertySheetDisplayName>
+    <OpenSSLVcpkgRoot Condition="'$(VsInstallRoot)' != ''">$(VsInstallRoot)\vcpkg</OpenSSLVcpkgRoot>
+    <OpenSSLIncDir Condition="'$(OPENSSL_INC)' != ''">$(OPENSSL_INC)</OpenSSLIncDir>
+    <OpenSSLIncDir Condition="'$(OpenSSLIncDir)' == '' and Exists('$(OpenSSLVcpkgRoot)\installed\x86-windows\include\openssl\evp.h')">$(OpenSSLVcpkgRoot)\installed\x86-windows\include</OpenSSLIncDir>
+    <OpenSSLLibDir Condition="'$(OPENSSL_LIB)' != ''">$(OPENSSL_LIB)</OpenSSLLibDir>
+    <OpenSSLLibDir Condition="'$(OpenSSLLibDir)' == '' and Exists('$(OpenSSLVcpkgRoot)\installed\x86-windows\lib\libcrypto.lib')">$(OpenSSLVcpkgRoot)\installed\x86-windows\lib</OpenSSLLibDir>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
       <Optimization>Full</Optimization>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <WholeProgramOptimization>true</WholeProgramOptimization>
-      <AdditionalIncludeDirectories>$(OPENSSL_INC);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OpenSSLIncDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>NDEBUG;OPENSSL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <TargetMachine>MachineX86</TargetMachine>
-      <AdditionalLibraryDirectories>$(OPENSSL_LIB)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(OpenSSLLibDir)</AdditionalLibraryDirectories>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
     </Link>
     <Lib>

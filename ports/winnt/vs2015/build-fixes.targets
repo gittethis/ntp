@@ -1,0 +1,13 @@
+<Project>
+  <!--
+    VS 2022/MSBuild can occasionally leave LastBuildUnsuccessful briefly locked
+    after a successful native build. Keep that cleanup race from failing the
+    entire solution build.
+  -->
+  <Target Name="FinalizeBuildStatus">
+    <Delete Files="$(LastBuildUnsuccessful)"
+            Condition="Exists('$(LastBuildUnsuccessful)')"
+            ContinueOnError="WarnAndContinue" />
+    <Touch Files="$(LastBuildState)" Condition="Exists('$(LastBuildState)')" />
+  </Target>
+</Project>

@@ -1,2 +1,0 @@
-^D:\NTP-STABLE-DLH-260328\PORTS\WINNT\LIBNTP\MESSAGES.MC
-mc -h D:\ntp-stable-dlh-260328\ports\winnt\libntp\ -r D:\ntp-stable-dlh-260328\ports\winnt\libntp\ -e h D:\ntp-stable-dlh-260328\ports\winnt\libntp\messages.mc

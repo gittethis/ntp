@@ -117,4 +117,5 @@
     <ClInclude Include="..\..\ppsapi\loopback\src\timepps.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="..\build-fixes.targets" />
 </Project>

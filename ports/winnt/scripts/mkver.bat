@@ -178,6 +178,11 @@ GOTO USAGE
 :BEGIN
 
 SET GENERATED_PROGRAM=%2
+SET MKVER_TMP_TAG=%RANDOM%_%RANDOM%
+SET F_POINT_SH=point-%MKVER_TMP_TAG%.txt
+SET F_USERSET_REG=userset-%MKVER_TMP_TAG%.reg
+SET F_USERSET_TXT=userset-%MKVER_TMP_TAG%.txt
+SET F_TZINFO_REG=tzinfo-%MKVER_TMP_TAG%.reg
 
 REM *****************************************************************************************************************
 REM Increment build number, reimplemented from orginal Unix Shell script
@@ -229,16 +234,16 @@ REM ****************************************************************************
 	SET UTC_SIGN=
 	
 	REM *** Now get the timezone settings from the registry
-	reg export "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\TimeZoneInformation" tzinfo.reg >NUL
-	IF NOT EXIST tzinfo.reg GOTO NOTZINFO
+	reg export "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\TimeZoneInformation" "%F_TZINFO_REG%" >NUL
+	IF NOT EXIST "%F_TZINFO_REG%" GOTO NOTZINFO
 
-	for /f "Tokens=1* Delims==" %%a in ('type tzinfo.reg') do if %%a == "ActiveTimeBias" SET ACTIVEBIAS=%%b
+	for /f "Tokens=1* Delims==" %%a in ('type "%F_TZINFO_REG%"') do if %%a == "ActiveTimeBias" SET ACTIVEBIAS=%%b
 	REM Windows 10 - Home and possibly others
-	IF "%ACTIVEBIAS%" == "" for /f "Tokens=1* Delims==" %%a in ('type tzinfo.reg') do if %%a == "Bias" SET ACTIVEBIAS=%%b
+	IF "%ACTIVEBIAS%" == "" for /f "Tokens=1* Delims==" %%a in ('type "%F_TZINFO_REG%"') do if %%a == "Bias" SET ACTIVEBIAS=%%b
 	for /f "Tokens=1* Delims=:" %%a in ('echo %ACTIVEBIAS%') do ( SET ACTIVEBIAS=%%b & SET PARTYP=%%a )
 	
 	REM *** Clean up temporary file
-	IF EXIST tzinfo.reg DEL tzinfo.reg
+	IF EXIST "%F_TZINFO_REG%" DEL "%F_TZINFO_REG%"
 	
 	REM *** Check if we really got a dword value from the registry ...
 	IF NOT "%PARTYP%"=="dword " goto NOTZINFO
@@ -283,8 +288,7 @@ REM ****************************************************************************
 :VER_FROM_PACKAGE_INFO
 	REM Get version from packageinfo.sh file, which contains lines reading e.g.
 	
-	TYPE %F_PACKAGEINFO_SH% | findstr /V "rcpoint=" | findstr /V "betapoint=" | findstr "point=" > point.txt
-	SET F_POINT_SH=point.txt
+	TYPE %F_PACKAGEINFO_SH% | findstr /V "rcpoint=" | findstr /V "betapoint=" | findstr "point=" > "%F_POINT_SH%"
 	
 	FOR /F "eol=# TOKENS=2 DELIMS==" %%a IN ('findstr  "proto=" %%F_PACKAGEINFO_SH%%') DO SET PROTO=%%a
 	FOR /F "eol=# TOKENS=2 DELIMS==" %%a IN ('findstr  "major=" %%F_PACKAGEINFO_SH%%') DO SET MAJOR=%%a
@@ -367,20 +371,20 @@ REM ****************************************************************************
 
 
 	REM Any temporary files left from aborted previous run? Go where you belong...
-	IF exist userset.reg del userset.reg
-	IF exist userset.txt del userset.txt
+	IF exist "%F_USERSET_REG%" del "%F_USERSET_REG%"
+	IF exist "%F_USERSET_TXT%" del "%F_USERSET_TXT%"
 	
-	reg export "HKEY_CURRENT_USER\Control Panel\International" userset.reg >NUL
-	IF not exist userset.reg goto ERRNOREG
+	reg export "HKEY_CURRENT_USER\Control Panel\International" "%F_USERSET_REG%" >NUL
+	IF not exist "%F_USERSET_REG%" goto ERRNOREG
 
 	rem *** convert from 16-bit unicode to 8-bit text
-	type userset.reg > userset.txt
+	type "%F_USERSET_REG%" > "%F_USERSET_TXT%"
 
-	FOR /F "TOKENS=1-9 DELIMS== " %%a IN ('findstr "iDate" userset.txt') DO SET DATEFORMAT=%%b
-	FOR /F "TOKENS=1-9 DELIMS== " %%a IN ('findstr "iTime" userset.txt') DO SET TIMEFORMAT=%%b
+	FOR /F "TOKENS=1-9 DELIMS== " %%a IN ('findstr "iDate" "%F_USERSET_TXT%"') DO SET DATEFORMAT=%%b
+	FOR /F "TOKENS=1-9 DELIMS== " %%a IN ('findstr "iTime" "%F_USERSET_TXT%"') DO SET TIMEFORMAT=%%b
 
-	FOR /F "TOKENS=1-9 DELIMS== " %%a IN ('findstr /R "sDate\>" userset.txt') DO SET DATEDELIM=%%b
-	FOR /F "TOKENS=1-9 DELIMS== " %%a IN ('findstr /R "sTime\>" userset.txt') DO SET TIMEDELIM=%%b
+	FOR /F "TOKENS=1-9 DELIMS== " %%a IN ('findstr /R "sDate\>" "%F_USERSET_TXT%"') DO SET DATEDELIM=%%b
+	FOR /F "TOKENS=1-9 DELIMS== " %%a IN ('findstr /R "sTime\>" "%F_USERSET_TXT%"') DO SET TIMEDELIM=%%b
 	
 	IF "%TIMEFORMAT%"=="" GOTO ERRNOTIME
 	IF "%DATEFORMAT%"=="" GOTO ERRNODATE
@@ -534,6 +538,7 @@ REM ****************************************************************************
 :EOF
 
 REM *** Cleaning up
-IF EXIST point.txt DEL point.txt
-IF EXIST userset.txt DEL userset.txt
-IF EXIST userset.reg DEL userset.reg
+IF EXIST "%F_POINT_SH%" DEL "%F_POINT_SH%"
+IF EXIST "%F_USERSET_TXT%" DEL "%F_USERSET_TXT%"
+IF EXIST "%F_USERSET_REG%" DEL "%F_USERSET_REG%"
+IF EXIST "%F_TZINFO_REG%" DEL "%F_TZINFO_REG%"

@@ -7,27 +7,27 @@
     <_ProjectFileVersion>12.0.30501.0</_ProjectFileVersion>
     <_PropertySheetDisplayName>debug-x64</_PropertySheetDisplayName>
     <LinkIncremental>true</LinkIncremental>	<!-- Edit & Continue -->
+    <OpenSSL64VcpkgRoot Condition="'$(VsInstallRoot)' != ''">$(VsInstallRoot)\vcpkg</OpenSSL64VcpkgRoot>
+    <OpenSSL64IncDir Condition="'$(OPENSSL64_INC)' != ''">$(OPENSSL64_INC)</OpenSSL64IncDir>
+    <OpenSSL64IncDir Condition="'$(OpenSSL64IncDir)' == '' and Exists('$(OpenSSL64VcpkgRoot)\installed\x64-windows\include\openssl\evp.h')">$(OpenSSL64VcpkgRoot)\installed\x64-windows\include</OpenSSL64IncDir>
+    <OpenSSL64LibDir Condition="'$(OPENSSL64_LIB)' != ''">$(OPENSSL64_LIB)</OpenSSL64LibDir>
+    <OpenSSL64LibDir Condition="'$(OpenSSL64LibDir)' == '' and Exists('$(OpenSSL64VcpkgRoot)\installed\x64-windows\lib\libcrypto.lib')">$(OpenSSL64VcpkgRoot)\installed\x64-windows\lib</OpenSSL64LibDir>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>$(OPENSSL64_INC);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OpenSSL64IncDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_DEBUG;OPENSSL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-	<!-- vvv Edit & Continue vvv -->
-      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
-      <MinimalRebuild>true</MinimalRebuild>
-      <MultiProcessorCompilation>false</MultiProcessorCompilation>
-	<!-- ^^^ Edit & Continue ^^^ -->
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <MinimalRebuild>false</MinimalRebuild>
     </ClCompile>
     <Link>
       <TargetMachine>MachineX64</TargetMachine>
-      <AdditionalLibraryDirectories>$(OPENSSL64_LIB)</AdditionalLibraryDirectories>
-	<!-- vvv Edit & Continue vvv -->
+      <AdditionalLibraryDirectories>$(OpenSSL64LibDir)</AdditionalLibraryDirectories>
       <EnableCOMDATFolding>false</EnableCOMDATFolding>
       <OptimizeReferences>false</OptimizeReferences>
-	<!-- ^^^ Edit & Continue ^^^ -->
     </Link>
   </ItemDefinitionGroup>
 </Project>
