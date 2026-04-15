@@ -211,7 +211,7 @@ extern "C" {
 		size_t s2cKeyLen;
 		size_t s2cKeyCap;
 
-		char* cookieFolder;
+		char* sessionCacheKey;
 	} NtsKeContext;
 
 	void PrintLastError(const char* what);

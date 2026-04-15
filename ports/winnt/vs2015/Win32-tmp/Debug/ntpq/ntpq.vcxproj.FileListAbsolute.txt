@@ -1,1 +1,0 @@
-D:\ntp\ports\winnt\vs2015\Win32-tmp\Debug\ntpq\ntpq.vcxproj.CopyComplete

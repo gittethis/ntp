@@ -636,7 +636,7 @@ nts_ke_context_free(NtsKeContext* ctx)
 
 	nts_str_free(&ctx->ntsKeHost);
 	nts_str_free(&ctx->negotiatedNtpServer);
-	nts_str_free(&ctx->cookieFolder);
+	nts_str_free(&ctx->sessionCacheKey);
 
 	nts_buf_free(&ctx->c2sKey, &ctx->c2sKeyLen, &ctx->c2sKeyCap);
 	nts_buf_free(&ctx->s2cKey, &ctx->s2cKeyLen, &ctx->s2cKeyCap);
@@ -646,6 +646,49 @@ nts_ke_context_free(NtsKeContext* ctx)
 
 	ctx->negotiatedNtpPort = 123;
 	ctx->negotiatedAead = 0;
+}
+
+static int
+nts_set_peer_identity(struct peer* peer, NtsKeContext* ctx)
+{
+	const char* host;
+	const char* addr;
+	size_t keyLen;
+	char* cacheKey;
+
+	if (peer == NULL || ctx == NULL)
+		return 0;
+
+	if (peer->fqdn != NULL && peer->fqdn[0] != '\0')
+		host = peer->fqdn;
+	else if (peer->hostname != NULL && peer->hostname[0] != '\0')
+		host = peer->hostname;
+	else
+		return 0;
+
+	addr = stoa(&peer->srcadr);
+	if (addr == NULL || addr[0] == '\0')
+		return 0;
+
+	keyLen = strlen(host) + 1 + strlen(addr);
+	cacheKey = (char*)malloc(keyLen + 1);
+	if (cacheKey == NULL)
+		return 0;
+
+	snprintf(cacheKey, keyLen + 1, "%s|%s", host, addr);
+
+	if (!nts_str_set(&ctx->ntsKeHost, host)) {
+		free(cacheKey);
+		return 0;
+	}
+
+	if (!nts_str_set(&ctx->sessionCacheKey, cacheKey)) {
+		free(cacheKey);
+		return 0;
+	}
+
+	free(cacheKey);
+	return 1;
 }
 
 
@@ -2689,7 +2732,10 @@ nts_make_stored_session_from_runtime(const NtsKeContext* ctx,NtsStoredSession* o
 	nts_stored_session_free(out);
 	nts_stored_session_init(out);
 
-	if (!nts_str_set(&out->host, ctx->ntsKeHost))
+	if (ctx->sessionCacheKey == NULL || ctx->sessionCacheKey[0] == '\0')
+		goto fail;
+
+	if (!nts_str_set(&out->host, ctx->sessionCacheKey))
 		goto fail;
 
 	serverName = (ctx->negotiatedNtpServer != NULL &&
@@ -2739,14 +2785,39 @@ nts_copy_stored_session_to_runtime(const NtsStoredSession* stored,NtsKeContext* 
 {
 	NtsKeContext tmp;
 	size_t i;
+	char* savedNtsKeHost;
+	char* savedSessionCacheKey;
 
 	if (stored == NULL || ctx == NULL)
 		return 0;
 
 	nts_ke_context_init(&tmp);
+	savedNtsKeHost = NULL;
+	savedSessionCacheKey = NULL;
 
-	if (!nts_str_set(&tmp.ntsKeHost, stored->host))
+	if (ctx->ntsKeHost != NULL && ctx->ntsKeHost[0] != '\0') {
+		if (!nts_str_set(&savedNtsKeHost, ctx->ntsKeHost))
+			goto fail;
+	}
+
+	if (ctx->sessionCacheKey != NULL && ctx->sessionCacheKey[0] != '\0') {
+		if (!nts_str_set(&savedSessionCacheKey, ctx->sessionCacheKey))
+			goto fail;
+	}
+
+	if (savedNtsKeHost != NULL) {
+		tmp.ntsKeHost = savedNtsKeHost;
+		savedNtsKeHost = NULL;
+	} else if (!nts_str_set(&tmp.ntsKeHost, stored->host)) {
 		goto fail;
+	}
+
+	if (savedSessionCacheKey != NULL) {
+		tmp.sessionCacheKey = savedSessionCacheKey;
+		savedSessionCacheKey = NULL;
+	} else if (!nts_str_set(&tmp.sessionCacheKey, stored->host)) {
+		goto fail;
+	}
 
 	if (!nts_str_set(&tmp.negotiatedNtpServer, stored->ntpServer))
 		goto fail;
@@ -2784,7 +2855,7 @@ nts_copy_stored_session_to_runtime(const NtsStoredSession* stored,NtsKeContext* 
 	 */
 	nts_str_free(&ctx->ntsKeHost);
 	nts_str_free(&ctx->negotiatedNtpServer);
-	nts_str_free(&ctx->cookieFolder);
+	nts_str_free(&ctx->sessionCacheKey);
 
 	nts_buf_free(&ctx->c2sKey, &ctx->c2sKeyLen, &ctx->c2sKeyCap);
 	nts_buf_free(&ctx->s2cKey, &ctx->s2cKeyLen, &ctx->s2cKeyCap);
@@ -2796,6 +2867,7 @@ nts_copy_stored_session_to_runtime(const NtsStoredSession* stored,NtsKeContext* 
 
 	ctx->ntsKeHost = tmp.ntsKeHost;
 	ctx->negotiatedNtpServer = tmp.negotiatedNtpServer;
+	ctx->sessionCacheKey = tmp.sessionCacheKey;
 	ctx->negotiatedNtpPort = tmp.negotiatedNtpPort;
 	ctx->negotiatedAead = tmp.negotiatedAead;
 	ctx->c2sKey = tmp.c2sKey;
@@ -2811,6 +2883,7 @@ nts_copy_stored_session_to_runtime(const NtsStoredSession* stored,NtsKeContext* 
 
 	tmp.ntsKeHost = NULL;
 	tmp.negotiatedNtpServer = NULL;
+	tmp.sessionCacheKey = NULL;
 	tmp.c2sKey = NULL;
 	tmp.c2sKeyLen = 0;
 	tmp.c2sKeyCap = 0;
@@ -2826,6 +2899,8 @@ nts_copy_stored_session_to_runtime(const NtsStoredSession* stored,NtsKeContext* 
 	return 1;
 
 fail:
+	nts_str_free(&savedNtsKeHost);
+	nts_str_free(&savedSessionCacheKey);
 	nts_ke_context_free(&tmp);
 	return 0;
 }
@@ -4882,7 +4957,7 @@ void nts_clear_runtime_session(NtsKeContext* ctx)
 
 	nts_str_free(&ctx->ntsKeHost);
 	nts_str_free(&ctx->negotiatedNtpServer);
-	nts_str_free(&ctx->cookieFolder);
+	nts_str_free(&ctx->sessionCacheKey);
 
 	nts_buf_free(&ctx->c2sKey, &ctx->c2sKeyLen, &ctx->c2sKeyCap);
 	nts_buf_free(&ctx->s2cKey, &ctx->s2cKeyLen, &ctx->s2cKeyCap);
@@ -5011,14 +5086,19 @@ int nts_run_peer_sync(struct peer* peer)
 		return NTS_SERVICE_SYNC_FAILED;
 
 	ctx = &pctx->ke;
-	if (peer->fqdn != NULL && peer->fqdn[0] != '\0') {
-		ctx->ntsKeHost = strdup(peer->fqdn);
-	} else if (peer->hostname != NULL && peer->hostname[0] != '\0') {
-		ctx->ntsKeHost = strdup(peer->hostname);
+	if (!nts_set_peer_identity(peer, ctx)) {
+		msyslog(LOG_ERR,
+			"nts_run_peer_sync: failed to derive peer NTS identity");
+		return NTS_SERVICE_SYNC_FAILED;
 	}
 	if (ctx->ntsKeHost == NULL || ctx->ntsKeHost[0] == '\0') {
 		msyslog(LOG_ERR,
 			"nts_run_peer_sync: ntsKeHost is empty (fqdn/hostname missing)");
+		return NTS_SERVICE_SYNC_FAILED;
+	}
+	if (ctx->sessionCacheKey == NULL || ctx->sessionCacheKey[0] == '\0') {
+		msyslog(LOG_ERR,
+			"nts_run_peer_sync: session cache key is empty");
 		return NTS_SERVICE_SYNC_FAILED;
 	}
 
@@ -5028,7 +5108,7 @@ int nts_run_peer_sync(struct peer* peer)
 	ntp_sync_outcome_init(&freshOutcome);
 	nts_stored_session_init(&updated);
 
-	haveStoredSession = nts_load_session_from_sqlite(ctx->ntsKeHost,
+	haveStoredSession = nts_load_session_from_sqlite(ctx->sessionCacheKey,
 		&loaded,
 		&dbPath);
 
@@ -5076,11 +5156,9 @@ int nts_run_peer_sync(struct peer* peer)
 			msyslog(LOG_WARNING,
 				"nts_run_peer_sync: cached session appears stale or invalid; discarding and renegotiating");
 
-			nts_delete_session_from_sqlite(ctx->ntsKeHost);
+			nts_delete_session_from_sqlite(ctx->sessionCacheKey);
 			nts_clear_runtime_session(ctx);
-			if (!nts_str_set(&ctx->ntsKeHost, loaded.host))
-				if (!nts_str_set(&ctx->ntsKeHost, peer->hostname))
-					;
+			(void)nts_set_peer_identity(peer, ctx);
 		}
 		else {
 			msyslog(LOG_ERR,
@@ -5093,11 +5171,9 @@ int nts_run_peer_sync(struct peer* peer)
 		DPRINTF(3, (
 			"nts_run_peer_sync: cached NTS session is too old; forcing fresh NTS-KE\n"));
 
-		nts_delete_session_from_sqlite(ctx->ntsKeHost);
+		nts_delete_session_from_sqlite(ctx->sessionCacheKey);
 		nts_clear_runtime_session(ctx);
-		if (!nts_str_set(&ctx->ntsKeHost, loaded.host))
-			if (!nts_str_set(&ctx->ntsKeHost, peer->hostname))
-				;
+		(void)nts_set_peer_identity(peer, ctx);
 	}
 
 	DPRINTF(3, (
@@ -5337,6 +5413,7 @@ nts_refresh_session(NtsKeContext* ctx)
 	SOCKET s;
 	int ok;
 	char* savedHost;
+	char* savedSessionCacheKey;
 
 	if (ctx == NULL)
 		return 0;
@@ -5348,10 +5425,19 @@ nts_refresh_session(NtsKeContext* ctx)
 	}
 
 	savedHost = NULL;
+	savedSessionCacheKey = NULL;
 	if (!nts_str_set(&savedHost, ctx->ntsKeHost)) {
 		msyslog(LOG_ERR,
 			"nts_refresh_session: failed to preserve ntsKeHost");
 		return 0;
+	}
+	if (ctx->sessionCacheKey != NULL && ctx->sessionCacheKey[0] != '\0') {
+		if (!nts_str_set(&savedSessionCacheKey, ctx->sessionCacheKey)) {
+			msyslog(LOG_ERR,
+				"nts_refresh_session: failed to preserve sessionCacheKey");
+			nts_str_free(&savedHost);
+			return 0;
+		}
 	}
 
 	/*
@@ -5364,9 +5450,19 @@ nts_refresh_session(NtsKeContext* ctx)
 		msyslog(LOG_ERR,
 			"nts_refresh_session: failed to restore ntsKeHost");
 		nts_str_free(&savedHost);
+		nts_str_free(&savedSessionCacheKey);
 		return 0;
 	}
 	nts_str_free(&savedHost);
+	if (savedSessionCacheKey != NULL) {
+		if (!nts_str_set(&ctx->sessionCacheKey, savedSessionCacheKey)) {
+			msyslog(LOG_ERR,
+				"nts_refresh_session: failed to restore sessionCacheKey");
+			nts_str_free(&savedSessionCacheKey);
+			return 0;
+		}
+		nts_str_free(&savedSessionCacheKey);
+	}
 
 	s = nts_connect_tcp(ctx->ntsKeHost, "4460");
 	if (s == INVALID_SOCKET) {
