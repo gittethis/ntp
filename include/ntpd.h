@@ -273,6 +273,9 @@ extern	void	proto_config	(int, u_long, double, sockaddr_u *);
 extern	void	proto_clr_stats (void);
 #ifdef SYS_WINNT
 extern	int	nts_run_peer_sync(struct peer *);
+extern	void	nts_peer_update(struct peer *, double, double, double,
+		    u_char, u_char, u_char, s_char, double, double,
+		    u_int32, const l_fp *);
 #endif
 
 /* ntp_refclock.c */

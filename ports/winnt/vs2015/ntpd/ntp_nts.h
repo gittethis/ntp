@@ -32,6 +32,16 @@ typedef struct ParsedNtpHeaderTimes {
 	double t2_receive;
 	double t3_transmit;
 	uint8_t originateBytes[8];
+	u_char leap;
+	u_char version;
+	u_char mode;
+	u_char stratum;
+	u_char ppoll;
+	s_char precision;
+	double rootDelay;
+	double rootDisp;
+	u_int32 refid;
+	l_fp reftime;
 } ParsedNtpHeaderTimes;
 
 typedef struct NtsRequestBuildResult {
@@ -107,6 +117,18 @@ typedef struct NtpSyncOutcome {
 	double offsetSeconds;
 	double delaySeconds;
 	int haveTiming;
+	int haveHeader;
+	double destinationTime;
+	u_char leap;
+	u_char version;
+	u_char mode;
+	u_char stratum;
+	u_char ppoll;
+	s_char precision;
+	double rootDelay;
+	double rootDisp;
+	u_int32 refid;
+	l_fp reftime;
 } NtpSyncOutcome;
 
 typedef enum SessionAgeDecision {

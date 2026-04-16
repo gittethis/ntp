@@ -3365,6 +3365,8 @@ nts_parse_authenticated_ntp_header_times(const uint8_t* packet,
 	size_t packetLen,
 	ParsedNtpHeaderTimes* out)
 {
+	const struct pkt* pkt;
+
 	if (packet == NULL || out == NULL)
 		return 0;
 
@@ -3374,10 +3376,22 @@ nts_parse_authenticated_ntp_header_times(const uint8_t* packet,
 		return 0;
 	}
 
+	pkt = (const struct pkt*)packet;
+
 	memcpy(out->originateBytes, &packet[24], 8);
 	out->originate = nts_ntp_timestamp_to_unix_seconds(&packet[24]);
 	out->t2_receive = nts_ntp_timestamp_to_unix_seconds(&packet[32]);
 	out->t3_transmit = nts_ntp_timestamp_to_unix_seconds(&packet[40]);
+	out->leap = PKT_LEAP(pkt->li_vn_mode);
+	out->version = PKT_VERSION(pkt->li_vn_mode);
+	out->mode = PKT_MODE(pkt->li_vn_mode);
+	out->stratum = PKT_TO_STRATUM(pkt->stratum);
+	out->ppoll = pkt->ppoll;
+	out->precision = pkt->precision;
+	out->rootDelay = FPTOD(NTOHS_FP(pkt->rootdelay));
+	out->rootDisp = FPTOD(NTOHS_FP(pkt->rootdisp));
+	out->refid = pkt->refid;
+	NTOHL_FP(&pkt->reftime, &out->reftime);
 
 	return 1;
 }
@@ -4820,6 +4834,18 @@ NtpSyncOutcome nts_do_authenticated_ntp_sync(NtsKeContext* ctx)
 	outcome.offsetSeconds = sync.offsetSeconds;
 	outcome.delaySeconds = sync.delaySeconds;
 	outcome.haveTiming = 1;
+	outcome.haveHeader = 1;
+	outcome.destinationTime = times.t4;
+	outcome.leap = hdrTimes.leap;
+	outcome.version = hdrTimes.version;
+	outcome.mode = hdrTimes.mode;
+	outcome.stratum = hdrTimes.stratum;
+	outcome.ppoll = hdrTimes.ppoll;
+	outcome.precision = hdrTimes.precision;
+	outcome.rootDelay = hdrTimes.rootDelay;
+	outcome.rootDisp = hdrTimes.rootDisp;
+	outcome.refid = hdrTimes.refid;
+	outcome.reftime = hdrTimes.reftime;
 
 done:
 	nts_request_build_result_free(&req);
@@ -4969,6 +4995,18 @@ int nts_run_peer_sync(struct peer* peer)
 		cachedOutcome = nts_do_authenticated_ntp_sync(ctx);
 
 		if (cachedOutcome.result == NTP_SYNC_RESULT_SUCCESS) {
+			nts_peer_update(peer,
+				cachedOutcome.offsetSeconds,
+				cachedOutcome.delaySeconds,
+				cachedOutcome.destinationTime,
+				cachedOutcome.leap,
+				cachedOutcome.mode,
+				cachedOutcome.stratum,
+				cachedOutcome.precision,
+				cachedOutcome.rootDelay,
+				cachedOutcome.rootDisp,
+				cachedOutcome.refid,
+				&cachedOutcome.reftime);
 			if (nts_make_stored_session_from_runtime(ctx, &updated)) {
 				char* savedDbPath = NULL;
 				if (!nts_save_session_to_dump(&updated, &savedDbPath)) {
@@ -5042,6 +5080,18 @@ int nts_run_peer_sync(struct peer* peer)
 		state = NTS_SERVICE_SYNC_FAILED;
 		goto done;
 	}
+	nts_peer_update(peer,
+		freshOutcome.offsetSeconds,
+		freshOutcome.delaySeconds,
+		freshOutcome.destinationTime,
+		freshOutcome.leap,
+		freshOutcome.mode,
+		freshOutcome.stratum,
+		freshOutcome.precision,
+		freshOutcome.rootDelay,
+		freshOutcome.rootDisp,
+		freshOutcome.refid,
+		&freshOutcome.reftime);
 
 	nts_stored_session_free(&updated);
 	nts_stored_session_init(&updated);

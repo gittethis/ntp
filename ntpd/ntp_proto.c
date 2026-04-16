@@ -10,7 +10,6 @@
 #endif
 
 #include "ntpd.h"
-//#include "..\ports\winnt\vs2015\ntpd\ntp_nts.h"
 #include "ntp_stdlib.h"
 #include "ntp_unixtime.h"
 #include "ntp_control.h"
@@ -2866,6 +2865,68 @@ process_packet(
 	}
 }
 
+
+#ifdef SYS_WINNT
+void
+nts_peer_update(
+	struct peer *peer,
+	double offset,
+	double delay,
+	double destination_time,
+	u_char leap,
+	u_char mode,
+	u_char stratum,
+	s_char precision,
+	double rootdelay,
+	double rootdisp,
+	u_int32 refid,
+	const l_fp *reftime
+	)
+{
+	double	p_del;
+	double	p_disp;
+
+	if (peer == NULL || reftime == NULL)
+		return;
+
+	peer->leap = leap;
+	peer->stratum = stratum;
+	peer->pmode = mode;
+	peer->precision = precision;
+	peer->rootdelay = rootdelay;
+	peer->rootdisp = rootdisp;
+	peer->refid = refid;
+	peer->reftime = *reftime;
+
+	DTOLFP(destination_time + JAN_1970, &peer->dst);
+	peer->timereceived = current_time;
+	peer->timelastrec = current_time;
+	if (!peer->reach) {
+		report_event(PEVNT_REACH, peer, NULL);
+		peer->timereachable = current_time;
+	}
+	peer->reach |= 1;
+	peer->unreach = 0;
+
+	if (peer->retry > 0) {
+		peer->retry = 0;
+		if (peer->reach)
+			peer->burst = min(1 << (peer->hpoll - peer->minpoll),
+			    NTP_SHIFT) - 1;
+		else
+			peer->burst = NTP_IBURST - 1;
+		if (peer->burst > 0)
+			peer->nextdate = current_time;
+	}
+
+	p_del = max(delay, LOGTOD(sys_precision));
+	p_disp = LOGTOD(sys_precision) + LOGTOD(peer->precision) +
+	    clock_phi * p_del;
+
+	clock_filter(peer, offset + peer->bias, p_del, p_disp);
+	poll_update(peer, peer->hpoll, (peer->hmode == MODE_CLIENT));
+}
+#endif
 
 /*
  * clock_update - Called at system process update intervals.
