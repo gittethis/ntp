@@ -272,10 +272,28 @@ extern	void	set_sys_tick_precision(double);
 extern	void	proto_config	(int, u_long, double, sockaddr_u *);
 extern	void	proto_clr_stats (void);
 #ifdef SYS_WINNT
+struct nts_peer_sample {
+	double offset;
+	double delay;
+	double destination_time;
+	l_fp originate;
+	l_fp receive;
+	l_fp transmit;
+	u_char leap;
+	u_char version;
+	u_char mode;
+	u_char stratum;
+	u_char ppoll;
+	s_char precision;
+	double rootdelay;
+	double rootdisp;
+	u_int32 refid;
+	l_fp reftime;
+};
+
 extern	int	nts_run_peer_sync(struct peer *);
-extern	void	nts_peer_update(struct peer *, double, double, double,
-		    u_char, u_char, u_char, s_char, double, double,
-		    u_int32, const l_fp *);
+extern	void	nts_peer_update(struct peer *,
+		    const struct nts_peer_sample *);
 #endif
 
 /* ntp_refclock.c */

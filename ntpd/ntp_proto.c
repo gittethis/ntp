@@ -2870,37 +2870,63 @@ process_packet(
 void
 nts_peer_update(
 	struct peer *peer,
-	double offset,
-	double delay,
-	double destination_time,
-	u_char leap,
-	u_char mode,
-	u_char stratum,
-	s_char precision,
-	double rootdelay,
-	double rootdisp,
-	u_int32 refid,
-	const l_fp *reftime
+	const struct nts_peer_sample *sample
 	)
 {
+	double	header_disp;
 	double	p_del;
 	double	p_disp;
+	int	was_reachable;
+	l_fp	p_org;
+	l_fp	p_rec;
+	l_fp	p_xmt;
 
-	if (peer == NULL || reftime == NULL)
+	if (peer == NULL || sample == NULL)
 		return;
 
-	peer->leap = leap;
-	peer->stratum = stratum;
-	peer->pmode = mode;
-	peer->precision = precision;
-	peer->rootdelay = rootdelay;
-	peer->rootdisp = rootdisp;
-	peer->refid = refid;
-	peer->reftime = *reftime;
+	peer->flash &= ~PKT_TEST_MASK;
+	header_disp = sample->rootdelay / 2.0 + sample->rootdisp;
+	if (   sample->leap == LEAP_NOTINSYNC
+	    || sample->stratum < sys_floor
+	    || sample->stratum >= sys_ceiling)
+		peer->flash |= TEST6;
+	if (header_disp >= MAXDISPERSE)
+		peer->flash |= TEST7;
+	if (peer->flash & PKT_TEST_MASK) {
+		peer->seldisptoolarge++;
+		DPRINTF(1, ("nts_peer_update: flash header %04x\n",
+		    peer->flash));
+		return;
+	}
 
-	DTOLFP(destination_time + JAN_1970, &peer->dst);
+	sys_processed++;
+	peer->processed++;
+
+	peer->leap = sample->leap;
+	peer->stratum = min(sample->stratum, STRATUM_UNSPEC);
+	peer->ppoll = max(peer->minpoll, sample->ppoll);
+	peer->pmode = sample->mode;
+	peer->precision = sample->precision;
+	peer->rootdelay = sample->rootdelay;
+	peer->rootdisp = sample->rootdisp;
+	peer->refid = sample->refid;
+	peer->reftime = sample->reftime;
+	peer->flags |= FLAG_AUTHENTIC;
+
+	DTOLFP(sample->destination_time + JAN_1970, &peer->dst);
+	p_org = sample->originate;
+	p_rec = sample->receive;
+	p_xmt = sample->transmit;
+	record_raw_stats(&peer->srcadr,
+	    peer->dstadr ? &peer->dstadr->sin : NULL,
+	    &p_org, &p_rec, &p_xmt, &peer->dst,
+	    sample->leap, sample->version, sample->mode,
+	    sample->stratum, sample->ppoll, sample->precision,
+	    sample->rootdelay, sample->rootdisp, sample->refid,
+	    0, NULL);
 	peer->timereceived = current_time;
 	peer->timelastrec = current_time;
+	was_reachable = peer->reach != 0;
 	if (!peer->reach) {
 		report_event(PEVNT_REACH, peer, NULL);
 		peer->timereachable = current_time;
@@ -2910,7 +2936,7 @@ nts_peer_update(
 
 	if (peer->retry > 0) {
 		peer->retry = 0;
-		if (peer->reach)
+		if (was_reachable)
 			peer->burst = min(1 << (peer->hpoll - peer->minpoll),
 			    NTP_SHIFT) - 1;
 		else
@@ -2919,11 +2945,11 @@ nts_peer_update(
 			peer->nextdate = current_time;
 	}
 
-	p_del = max(delay, LOGTOD(sys_precision));
+	p_del = max(sample->delay, LOGTOD(sys_precision));
 	p_disp = LOGTOD(sys_precision) + LOGTOD(peer->precision) +
 	    clock_phi * p_del;
 
-	clock_filter(peer, offset + peer->bias, p_del, p_disp);
+	clock_filter(peer, sample->offset + peer->bias, p_del, p_disp);
 	poll_update(peer, peer->hpoll, (peer->hmode == MODE_CLIENT));
 }
 #endif

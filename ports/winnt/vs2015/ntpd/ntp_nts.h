@@ -32,6 +32,9 @@ typedef struct ParsedNtpHeaderTimes {
 	double t2_receive;
 	double t3_transmit;
 	uint8_t originateBytes[8];
+	l_fp originateLfp;
+	l_fp receiveLfp;
+	l_fp transmitLfp;
 	u_char leap;
 	u_char version;
 	u_char mode;
@@ -119,6 +122,9 @@ typedef struct NtpSyncOutcome {
 	int haveTiming;
 	int haveHeader;
 	double destinationTime;
+	l_fp originateLfp;
+	l_fp receiveLfp;
+	l_fp transmitLfp;
 	u_char leap;
 	u_char version;
 	u_char mode;

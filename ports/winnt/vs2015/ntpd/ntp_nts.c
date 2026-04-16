@@ -51,10 +51,8 @@ ntp_sync_outcome_init(NtpSyncOutcome* o)
 	if (o == NULL)
 		return;
 
+	memset(o, 0, sizeof(*o));
 	o->result = NTP_SYNC_RESULT_INTERNAL_ERROR;
-	o->offsetSeconds = 0.0;
-	o->delaySeconds = 0.0;
-	o->haveTiming = 0;
 }
 
 void
@@ -3387,6 +3385,9 @@ nts_parse_authenticated_ntp_header_times(const uint8_t* packet,
 	out->originate = nts_ntp_timestamp_to_unix_seconds(&packet[24]);
 	out->t2_receive = nts_ntp_timestamp_to_unix_seconds(&packet[32]);
 	out->t3_transmit = nts_ntp_timestamp_to_unix_seconds(&packet[40]);
+	NTOHL_FP(&pkt->org, &out->originateLfp);
+	NTOHL_FP(&pkt->rec, &out->receiveLfp);
+	NTOHL_FP(&pkt->xmt, &out->transmitLfp);
 	out->leap = PKT_LEAP(pkt->li_vn_mode);
 	out->version = PKT_VERSION(pkt->li_vn_mode);
 	out->mode = PKT_MODE(pkt->li_vn_mode);
@@ -4841,6 +4842,9 @@ NtpSyncOutcome nts_do_authenticated_ntp_sync(NtsKeContext* ctx)
 	outcome.haveTiming = 1;
 	outcome.haveHeader = 1;
 	outcome.destinationTime = times.t4;
+	outcome.originateLfp = hdrTimes.originateLfp;
+	outcome.receiveLfp = hdrTimes.receiveLfp;
+	outcome.transmitLfp = hdrTimes.transmitLfp;
 	outcome.leap = hdrTimes.leap;
 	outcome.version = hdrTimes.version;
 	outcome.mode = hdrTimes.mode;
@@ -4943,6 +4947,7 @@ int nts_run_peer_sync(struct peer* peer)
 	NtpSyncOutcome freshOutcome;
 	NtsStoredSession updated;
 	NtsServiceSyncState state;
+	struct nts_peer_sample sample;
 
 	if (peer == NULL)
 		return NTS_SERVICE_SYNC_FAILED;
@@ -4976,6 +4981,7 @@ int nts_run_peer_sync(struct peer* peer)
 	ntp_sync_outcome_init(&cachedOutcome);
 	ntp_sync_outcome_init(&freshOutcome);
 	nts_stored_session_init(&updated);
+	memset(&sample, 0, sizeof(sample));
 
 	haveStoredSession = nts_load_session_from_dump(ctx->sessionCacheKey,
 		&loaded,
@@ -5000,18 +5006,23 @@ int nts_run_peer_sync(struct peer* peer)
 		cachedOutcome = nts_do_authenticated_ntp_sync(ctx);
 
 		if (cachedOutcome.result == NTP_SYNC_RESULT_SUCCESS) {
-			nts_peer_update(peer,
-				cachedOutcome.offsetSeconds,
-				cachedOutcome.delaySeconds,
-				cachedOutcome.destinationTime,
-				cachedOutcome.leap,
-				cachedOutcome.mode,
-				cachedOutcome.stratum,
-				cachedOutcome.precision,
-				cachedOutcome.rootDelay,
-				cachedOutcome.rootDisp,
-				cachedOutcome.refid,
-				&cachedOutcome.reftime);
+			sample.offset = cachedOutcome.offsetSeconds;
+			sample.delay = cachedOutcome.delaySeconds;
+			sample.destination_time = cachedOutcome.destinationTime;
+			sample.originate = cachedOutcome.originateLfp;
+			sample.receive = cachedOutcome.receiveLfp;
+			sample.transmit = cachedOutcome.transmitLfp;
+			sample.leap = cachedOutcome.leap;
+			sample.version = cachedOutcome.version;
+			sample.mode = cachedOutcome.mode;
+			sample.stratum = cachedOutcome.stratum;
+			sample.ppoll = cachedOutcome.ppoll;
+			sample.precision = cachedOutcome.precision;
+			sample.rootdelay = cachedOutcome.rootDelay;
+			sample.rootdisp = cachedOutcome.rootDisp;
+			sample.refid = cachedOutcome.refid;
+			sample.reftime = cachedOutcome.reftime;
+			nts_peer_update(peer, &sample);
 			if (nts_make_stored_session_from_runtime(ctx, &updated)) {
 				char* savedDbPath = NULL;
 				if (!nts_save_session_to_dump(&updated, &savedDbPath)) {
@@ -5085,18 +5096,23 @@ int nts_run_peer_sync(struct peer* peer)
 		state = NTS_SERVICE_SYNC_FAILED;
 		goto done;
 	}
-	nts_peer_update(peer,
-		freshOutcome.offsetSeconds,
-		freshOutcome.delaySeconds,
-		freshOutcome.destinationTime,
-		freshOutcome.leap,
-		freshOutcome.mode,
-		freshOutcome.stratum,
-		freshOutcome.precision,
-		freshOutcome.rootDelay,
-		freshOutcome.rootDisp,
-		freshOutcome.refid,
-		&freshOutcome.reftime);
+	sample.offset = freshOutcome.offsetSeconds;
+	sample.delay = freshOutcome.delaySeconds;
+	sample.destination_time = freshOutcome.destinationTime;
+	sample.originate = freshOutcome.originateLfp;
+	sample.receive = freshOutcome.receiveLfp;
+	sample.transmit = freshOutcome.transmitLfp;
+	sample.leap = freshOutcome.leap;
+	sample.version = freshOutcome.version;
+	sample.mode = freshOutcome.mode;
+	sample.stratum = freshOutcome.stratum;
+	sample.ppoll = freshOutcome.ppoll;
+	sample.precision = freshOutcome.precision;
+	sample.rootdelay = freshOutcome.rootDelay;
+	sample.rootdisp = freshOutcome.rootDisp;
+	sample.refid = freshOutcome.refid;
+	sample.reftime = freshOutcome.reftime;
+	nts_peer_update(peer, &sample);
 
 	nts_stored_session_free(&updated);
 	nts_stored_session_init(&updated);
