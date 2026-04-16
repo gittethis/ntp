@@ -729,6 +729,44 @@ nts_get_peer_ctx(struct peer* peer)
 }
 
 int
+nts_peer_is_enabled(const struct peer* peer)
+{
+	if (peer == NULL)
+		return 0;
+
+	return !!(peer->flags & FLAG_NTS);
+}
+
+int
+nts_peer_is_secured(const struct peer* peer)
+{
+	if (peer == NULL || !(peer->flags & FLAG_NTS))
+		return 0;
+
+	return peer->nts_state == NTS_READY &&
+	       !!(peer->flags & FLAG_AUTHENTIC);
+}
+
+const char*
+nts_peer_state_name(const struct peer* peer)
+{
+	if (peer == NULL || !(peer->flags & FLAG_NTS))
+		return "disabled";
+
+	switch (peer->nts_state) {
+	case NTS_KE_PENDING:
+		return "pending";
+	case NTS_READY:
+		return "ready";
+	case NTS_FAILED:
+		return "failed";
+	case NTS_DISABLED:
+	default:
+		return "disabled";
+	}
+}
+
+int
 nts_ctx_create(struct peer* peer)
 {
 	NtpNtsPeerContext* ctx;
@@ -4960,19 +4998,23 @@ int nts_run_peer_sync(struct peer* peer)
 		return NTS_SERVICE_SYNC_FAILED;
 
 	ctx = &pctx->ke;
+	peer->nts_state = NTS_KE_PENDING;
 	if (!nts_set_peer_identity(peer, ctx)) {
 		msyslog(LOG_ERR,
 			"nts_run_peer_sync: failed to derive peer NTS identity");
+		peer->nts_state = NTS_FAILED;
 		return NTS_SERVICE_SYNC_FAILED;
 	}
 	if (ctx->ntsKeHost == NULL || ctx->ntsKeHost[0] == '\0') {
 		msyslog(LOG_ERR,
 			"nts_run_peer_sync: ntsKeHost is empty (fqdn/hostname missing)");
+		peer->nts_state = NTS_FAILED;
 		return NTS_SERVICE_SYNC_FAILED;
 	}
 	if (ctx->sessionCacheKey == NULL || ctx->sessionCacheKey[0] == '\0') {
 		msyslog(LOG_ERR,
 			"nts_run_peer_sync: session cache key is empty");
+		peer->nts_state = NTS_FAILED;
 		return NTS_SERVICE_SYNC_FAILED;
 	}
 
@@ -4994,6 +5036,7 @@ int nts_run_peer_sync(struct peer* peer)
 		if (!nts_copy_stored_session_to_runtime(&loaded, ctx)) {
 			msyslog(LOG_ERR,
 				"nts_run_peer_sync: failed to copy stored session to runtime");
+			peer->nts_state = NTS_FAILED;
 			state = NTS_SERVICE_SYNC_FAILED;
 			goto done;
 		}
@@ -5023,6 +5066,7 @@ int nts_run_peer_sync(struct peer* peer)
 			sample.refid = cachedOutcome.refid;
 			sample.reftime = cachedOutcome.reftime;
 			nts_peer_update(peer, &sample);
+			peer->nts_state = NTS_READY;
 			if (nts_make_stored_session_from_runtime(ctx, &updated)) {
 				char* savedDbPath = NULL;
 				if (!nts_save_session_to_dump(&updated, &savedDbPath)) {
@@ -5039,6 +5083,7 @@ int nts_run_peer_sync(struct peer* peer)
 		if (cachedOutcome.result == NTP_SYNC_RESULT_NETWORK_FAILURE) {
 			msyslog(LOG_WARNING,
 				"nts_run_peer_sync: cached authenticated NTP failed due to network; keeping cached session");
+			peer->nts_state = NTS_FAILED;
 			state = NTS_SERVICE_SYNC_FAILED;
 			goto done;
 		}
@@ -5055,6 +5100,7 @@ int nts_run_peer_sync(struct peer* peer)
 		else {
 			msyslog(LOG_ERR,
 				"nts_run_peer_sync: authenticated NTP failed due to internal/local error");
+			peer->nts_state = NTS_FAILED;
 			state = NTS_SERVICE_SYNC_FAILED;
 			goto done;
 		}
@@ -5074,6 +5120,7 @@ int nts_run_peer_sync(struct peer* peer)
 	if (!nts_refresh_session(ctx)) {
 		msyslog(LOG_ERR,
 			"nts_run_peer_sync: fresh NTS-KE failed");
+		peer->nts_state = NTS_FAILED;
 		state = NTS_SERVICE_SYNC_FAILED;
 		goto done;
 	}
@@ -5093,6 +5140,7 @@ int nts_run_peer_sync(struct peer* peer)
 	if (freshOutcome.result != NTP_SYNC_RESULT_SUCCESS) {
 		msyslog(LOG_ERR,
 			"nts_run_peer_sync: fresh authenticated NTP failed");
+		peer->nts_state = NTS_FAILED;
 		state = NTS_SERVICE_SYNC_FAILED;
 		goto done;
 	}
@@ -5113,6 +5161,7 @@ int nts_run_peer_sync(struct peer* peer)
 	sample.refid = freshOutcome.refid;
 	sample.reftime = freshOutcome.reftime;
 	nts_peer_update(peer, &sample);
+	peer->nts_state = NTS_READY;
 
 	nts_stored_session_free(&updated);
 	nts_stored_session_init(&updated);

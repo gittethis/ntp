@@ -294,6 +294,9 @@ struct nts_peer_sample {
 extern	int	nts_run_peer_sync(struct peer *);
 extern	void	nts_peer_update(struct peer *,
 		    const struct nts_peer_sample *);
+extern	int	nts_peer_is_enabled(const struct peer *);
+extern	int	nts_peer_is_secured(const struct peer *);
+extern	const char *nts_peer_state_name(const struct peer *);
 #endif
 
 /* ntp_refclock.c */

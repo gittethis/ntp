@@ -411,6 +411,9 @@ void nts_clear_runtime_session(NtsKeContext* ctx);
 int nts_delete_session_from_dump(const char* host);
 NtsServiceSyncState nts_classify_sync_stability(const NtpSyncOutcome* o);
 int nts_run_peer_sync(struct peer* peer);
+int nts_peer_is_enabled(const struct peer* peer);
+int nts_peer_is_secured(const struct peer* peer);
+const char* nts_peer_state_name(const struct peer* peer);
 
 int nts_is_stored_session_too_old(const NtsStoredSession* s);
 int nts_refresh_session(NtsKeContext* ctx);

@@ -1679,6 +1679,9 @@ doprintpeers(
 	int have_dstadr;
 	int have_da_rid;
 	int have_jitter;
+	int have_nts;
+	int nts_enabled;
+	int nts_auth;
 	sockaddr_u srcadr;
 	sockaddr_u dstadr;
 	sockaddr_u dum_store;
@@ -1716,6 +1719,9 @@ doprintpeers(
 	have_dstadr = FALSE;
 	have_da_rid = FALSE;
 	have_jitter = FALSE;
+	have_nts = FALSE;
+	nts_enabled = FALSE;
+	nts_auth = FALSE;
 	ZERO_SOCK(&srcadr);
 	ZERO_SOCK(&dstadr);
 	clock_name[0] = '\0';
@@ -1836,6 +1842,16 @@ doprintpeers(
 			if ((pvl == peervarlist || pvl == apeervarlist)
 			    && decodetime(value, &estjitter))
 				have_jitter = 1;
+		} else if (!strcmp("nts", name)) {
+			long ltemp;
+			if (decodeint(value, &ltemp)) {
+				have_nts = TRUE;
+				nts_enabled = (ltemp != 0);
+			}
+		} else if (!strcmp("ntsauth", name)) {
+			long ltemp;
+			if (decodeint(value, &ltemp))
+				nts_auth = (ltemp != 0);
 		} else if (!strcmp("rootdisp", name) ||
 			   !strcmp("dispersion", name)) {
 			decodetime(value, &estdisp);
@@ -1946,8 +1962,9 @@ doprintpeers(
 				xputc(' ', fp);
 		}
 		xprintf(fp,
-			" %2ld %c %4.4s %4.4s  %3lo  %7.7s %8.7s %7.7s\n",
+			" %2ld %c %c %4.4s %4.4s  %3lo  %7.7s %8.7s %7.7s\n",
 			stratum, type,
+			(nts_auth ? 'N' : (have_nts && nts_enabled) ? 'n' : '-'),
 			prettyinterval(whenbuf, sizeof(whenbuf),
 				       when(&ts, &rec, &reftime)),
 			prettyinterval(pollbuf, sizeof(pollbuf),
@@ -2040,7 +2057,7 @@ dopeers(
 			"server (local)");
 	}
 	xprintf(fp,
-		"     remote           refid      st t when poll reach   delay   offset  jitter\n");
+		"     remote           refid      st t s when poll reach   delay   offset  jitter\n");
 	if (numhosts > 1)
 		for (u = 0; u <= maxhostlen; u++)
 			xprintf(fp, "=");
@@ -2095,7 +2112,7 @@ doapeers(
 			"server (local)");
 	}
 	xprintf(fp,
-		"     remote       refid   assid  st t when poll reach   delay   offset  jitter\n");
+		"     remote       refid   assid  st t s when poll reach   delay   offset  jitter\n");
 	if (numhosts > 1)
 		for (u = 0; u <= maxhostlen; u++)
 			xprintf(fp, "=");

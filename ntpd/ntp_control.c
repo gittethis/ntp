@@ -28,6 +28,16 @@
 #include "ntp_leapsec.h"
 #include "timexsup.h"
 
+#ifdef SYS_WINNT
+# define PEER_NTS_ENABLED(p)	nts_peer_is_enabled(p)
+# define PEER_NTS_SECURED(p)	nts_peer_is_secured(p)
+# define PEER_NTS_STATE_NAME(p)	nts_peer_state_name(p)
+#else
+# define PEER_NTS_ENABLED(p)	0
+# define PEER_NTS_SECURED(p)	0
+# define PEER_NTS_STATE_NAME(p)	"disabled"
+#endif
+
 #include <rc_cmdlength.h>
 #ifdef KERNEL_PLL
 # include "ntp_syscall.h"
@@ -296,7 +306,10 @@ static const struct ctl_proc control_codes[] = {
 #define	CP_SELDISP		48
 #define	CP_SELBROKEN		49
 #define	CP_CANDIDATE		50
-#define	CP_MAX_NOAUTOKEY	CP_CANDIDATE
+#define	CP_NTS			51
+#define	CP_NTSSTATE		52
+#define	CP_NTSAUTH		53
+#define	CP_MAX_NOAUTOKEY	CP_NTSAUTH
 #ifdef AUTOKEY
 #define	CP_FLAGS		(1 + CP_MAX_NOAUTOKEY)
 #define	CP_HOST			(2 + CP_MAX_NOAUTOKEY)
@@ -543,6 +556,9 @@ static const struct ctl_var peer_var[] = {
 	{ CP_SELDISP,	RO, "seldisp" },	/* 48 */
 	{ CP_SELBROKEN,	RO, "selbroken" },	/* 49 */
 	{ CP_CANDIDATE, RO, "candidate" },	/* 50 */
+	{ CP_NTS,	RO, "nts" },		/* 51 */
+	{ CP_NTSSTATE,	RO, "ntsstate" },	/* 52 */
+	{ CP_NTSAUTH,	RO, "ntsauth" },	/* 53 */
 #ifdef AUTOKEY
 	{ CP_FLAGS,	RO, "flags" },		/* 1 + CP_MAX_NOAUTOKEY */
 	{ CP_HOST,	RO, "host" },		/* 2 + CP_MAX_NOAUTOKEY */
@@ -595,6 +611,9 @@ static const u_char def_peer_var[] = {
 	CP_FILTDELAY,
 	CP_FILTOFFSET,
 	CP_FILTERROR,
+	CP_NTS,
+	CP_NTSSTATE,
+	CP_NTSAUTH,
 #ifdef AUTOKEY
 	CP_HOST,
 	CP_FLAGS,
@@ -1331,9 +1350,9 @@ ctlpeerstatus(
 	status = p->status;
 	if (FLAG_CONFIG & p->flags)
 		status |= CTL_PST_CONFIG;
-	if (p->keyid)
+	if (p->keyid || PEER_NTS_ENABLED(p))
 		status |= CTL_PST_AUTHENABLE;
-	if (FLAG_AUTHENTIC & p->flags)
+	if ((FLAG_AUTHENTIC & p->flags) || PEER_NTS_SECURED(p))
 		status |= CTL_PST_AUTHENTIC;
 	if (p->reach)
 		status |= CTL_PST_REACH;
@@ -2595,12 +2614,14 @@ ctl_putpeer(
 		break;
 
 	case CP_AUTHENABLE:
-		ctl_putuint(peer_var[id].text, !(p->keyid));
+		ctl_putuint(peer_var[id].text,
+			    !!(p->keyid || PEER_NTS_ENABLED(p)));
 		break;
 
 	case CP_AUTHENTIC:
 		ctl_putuint(peer_var[id].text,
-			    !!(FLAG_AUTHENTIC & p->flags));
+			    !!((FLAG_AUTHENTIC & p->flags) ||
+			       PEER_NTS_SECURED(p)));
 		break;
 
 	case CP_SRCADR:
@@ -2850,6 +2871,19 @@ ctl_putpeer(
 
 	case CP_CANDIDATE:
 		ctl_putuint(peer_var[id].text, p->status);
+		break;
+
+	case CP_NTS:
+		ctl_putuint(peer_var[id].text, PEER_NTS_ENABLED(p));
+		break;
+
+	case CP_NTSSTATE:
+		ctl_putstr(peer_var[id].text, PEER_NTS_STATE_NAME(p),
+			   strlen(PEER_NTS_STATE_NAME(p)));
+		break;
+
+	case CP_NTSAUTH:
+		ctl_putuint(peer_var[id].text, PEER_NTS_SECURED(p));
 		break;
 #ifdef AUTOKEY
 	case CP_FLAGS:

@@ -1,1 +1,1 @@
-const char *Version = "ntpd 4.2.8p18@1.4091-o Apr 16 23:00:47.57 (UTC+03:00) 2026  (5)"; 
+const char *Version = "ntpd 4.2.8p18@1.4091-o Apr 16 23:28:20.72 (UTC+03:00) 2026  (9)"; 
