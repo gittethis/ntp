@@ -21,7 +21,6 @@
 # include <wincrypt.h>
 # include <bcrypt.h>
 # include <time.h>
-# include "sqlite3.h"
 #else
 # error "ntp_nts.h currently expects Windows/SChannel"
 #endif
@@ -292,14 +291,10 @@ int nts_make_stored_session_from_runtime(const NtsKeContext* ctx,NtsStoredSessio
 
 char* nts_bytes_to_hex(const uint8_t* data, size_t dataLen, size_t maxBytes);
 int nts_sanitize_filename(char** dst, const char* src);
-int nts_ensure_schema(sqlite3* db);
+int nts_build_session_dump_path(const char* host, const char* ext, char** outPath);
 
-const char* nts_sqlite_err(sqlite3* db);
-int nts_exec_sql(sqlite3* db, const char* sql);
-int nts_build_host_db_path(const char* host, char** outPath);
-
-int nts_save_session_to_sqlite(const NtsStoredSession* session, char** outDbPath);
-int nts_load_session_from_sqlite(const char* host,NtsStoredSession* out,char** outDbPath);
+int nts_save_session_to_dump(const NtsStoredSession* session, char** outPath);
+int nts_load_session_from_dump(const char* host,NtsStoredSession* out,char** outPath);
 int nts_update_cookies_in_session(const NtsKeContext* ctx);
 size_t nts_aead_key_size(uint16_t aeadId);
 int nts_is_stored_session_usable(const NtsStoredSession* s);
@@ -385,7 +380,7 @@ int nts_send_udp_and_receive(const char* host,
 
 NtpSyncOutcome nts_do_authenticated_ntp_sync(NtsKeContext* ctx);
 void nts_clear_runtime_session(NtsKeContext* ctx);
-int nts_delete_session_from_sqlite(const char* host);
+int nts_delete_session_from_dump(const char* host);
 NtsServiceSyncState nts_classify_sync_stability(const NtpSyncOutcome* o);
 int nts_run_peer_sync(struct peer* peer);
 

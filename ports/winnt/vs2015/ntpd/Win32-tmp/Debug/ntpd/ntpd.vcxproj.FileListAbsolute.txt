@@ -1,2 +1,0 @@
-D:\ntp\ports\winnt\vs2015\ntpd\Win32-out\Debug\libcrypto-3.dll
-D:\ntp\ports\winnt\vs2015\ntpd\Win32-tmp\Debug\ntpd\ntpd.vcxproj.CopyComplete

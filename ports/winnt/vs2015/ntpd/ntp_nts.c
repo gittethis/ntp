@@ -8,6 +8,7 @@
 #include "ntp_nts.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,6 +22,28 @@
 # pragma comment(lib, "crypt32.lib")
 # pragma comment(lib, "Bcrypt.lib")
 #endif
+
+/*
+ * Flat-file NTS session format stored in ntsdumpdir.
+ *
+ * One file is written per session cache key, which for pooled peers is
+ * currently "<configured-host>|<child-ip>" sanitized into a filename.
+ *
+ * File layout:
+ *   line 1: magic/version identifier
+ *   line 2: session cache key
+ *   line 3: "<createdAt> <updatedAt>" as Unix timestamps
+ *   line 4: "<negotiatedNtpServer> <negotiatedNtpPort>"
+ *   line 5: AEAD id
+ *   line 6: c2s key as lowercase hex
+ *   line 7: s2c key as lowercase hex
+ *   line 8: cookie count
+ *   lines 9+: one cookie per line as lowercase hex
+ *
+ * The file is written to .tmp and atomically moved into place, following the
+ * same basic persistence style chrony uses for NTS data in ntsdumpdir.
+ */
+#define NTS_DUMP_IDENTIFIER "NTSD0"
 
 void
 ntp_sync_outcome_init(NtpSyncOutcome* o)
@@ -2029,101 +2052,107 @@ nts_sanitize_filename(char** dst, const char* src)
 	return 1;
 }
 
-int
-nts_ensure_schema(sqlite3* db)
+static void
+nts_trim_line(char* s)
 {
-	const char* sql =
-		"PRAGMA foreign_keys = ON;"
+	size_t n;
 
-		"CREATE TABLE IF NOT EXISTS nts_sessions ("
-		"  host TEXT PRIMARY KEY,"
-		"  ntp_server TEXT NOT NULL,"
-		"  ntp_port INTEGER NOT NULL,"
-		"  aead_id INTEGER NOT NULL,"
-		"  c2s_key BLOB NOT NULL,"
-		"  s2c_key BLOB NOT NULL,"
-		"  created_at INTEGER NOT NULL,"
-		"  updated_at INTEGER NOT NULL"
-		");"
+	if (s == NULL)
+		return;
 
-		"CREATE TABLE IF NOT EXISTS nts_cookies ("
-		"  host TEXT NOT NULL,"
-		"  cookie_index INTEGER NOT NULL,"
-		"  cookie BLOB NOT NULL,"
-		"  PRIMARY KEY (host, cookie_index),"
-		"  FOREIGN KEY (host) REFERENCES nts_sessions(host) ON DELETE CASCADE"
-		");";
-
-	if (db == NULL)
-		return 0;
-
-	return nts_exec_sql(db, sql);
+	n = strlen(s);
+	while (n > 0 && (s[n - 1] == '\n' || s[n - 1] == '\r'))
+		s[--n] = '\0';
 }
 
-const char*
-nts_sqlite_err(sqlite3* db)
+static int
+nts_hex_value(char c)
 {
-	return (db != NULL) ? sqlite3_errmsg(db) : "sqlite3 error";
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
 }
 
-int
-nts_exec_sql(sqlite3* db, const char* sql)
+static char*
+nts_bytes_to_hex_compact(const uint8_t* data, size_t dataLen)
 {
-	char* errMsg;
-	int rc;
+	static const char hexchars[] = "0123456789abcdef";
+	char* out;
+	size_t i;
 
-	if (db == NULL || sql == NULL)
+	if (data == NULL || dataLen == 0)
+		return NULL;
+
+	out = (char*)malloc(2 * dataLen + 1);
+	if (out == NULL)
+		return NULL;
+
+	for (i = 0; i < dataLen; i++) {
+		out[2 * i] = hexchars[(data[i] >> 4) & 0x0F];
+		out[2 * i + 1] = hexchars[data[i] & 0x0F];
+	}
+	out[2 * dataLen] = '\0';
+
+	return out;
+}
+
+static int
+nts_hex_to_buf(const char* hex, uint8_t** out, size_t* outLen, size_t* outCap)
+{
+	uint8_t* buf;
+	size_t hexLen;
+	size_t i;
+
+	if (hex == NULL || out == NULL || outLen == NULL || outCap == NULL)
 		return 0;
 
-	errMsg = NULL;
-	rc = sqlite3_exec(db, sql, NULL, NULL, &errMsg);
-	if (rc != SQLITE_OK) {
-		msyslog(LOG_ERR,
-			"nts_exec_sql: sqlite3_exec failed: %s",
-			(errMsg != NULL) ? errMsg : "unknown error");
-		if (errMsg != NULL)
-			sqlite3_free(errMsg);
+	hexLen = strlen(hex);
+	if (hexLen == 0 || (hexLen % 2) != 0)
 		return 0;
+
+	buf = (uint8_t*)malloc(hexLen / 2);
+	if (buf == NULL)
+		return 0;
+
+	for (i = 0; i < hexLen; i += 2) {
+		int hi = nts_hex_value(hex[i]);
+		int lo = nts_hex_value(hex[i + 1]);
+
+		if (hi < 0 || lo < 0) {
+			free(buf);
+			return 0;
+		}
+
+		buf[i / 2] = (uint8_t)((hi << 4) | lo);
 	}
 
+	nts_buf_free(out, outLen, outCap);
+	*out = buf;
+	*outLen = hexLen / 2;
+	*outCap = hexLen / 2;
 	return 1;
 }
 
 int
-nts_build_host_db_path(const char* host, char** outPath)
+nts_build_session_dump_path(const char* host, const char* ext, char** outPath)
 {
-	//char tempPath[MAX_PATH + 1];
-	//DWORD n;
 	size_t folderLen;
 	char* folder;
 	char* safeHost;
 	size_t outLen;
 	char* path;
 
-	if (host == NULL || outPath == NULL)
+	if (host == NULL || ext == NULL || outPath == NULL)
 		return 0;
 
 	*outPath = NULL;
 	safeHost = NULL;
 	folder = NULL;
 	path = NULL;
-
-	/*ZERO(tempPath);
-	n = GetTempPathA(MAX_PATH, tempPath);
-	if (n == 0 || n > MAX_PATH) {
-		msyslog(LOG_ERR,
-			"nts_build_host_db_path: GetTempPathA failed: %lu",
-			(unsigned long)GetLastError());
-		return 0;
-	}
-
-	folderLen = strlen(tempPath) + strlen("NTSClient");
-	folder = (char*)malloc(folderLen + 1);
-	if (folder == NULL)
-		return 0;
-
-	strcpy(folder, tempPath);
-	strcat(folder, "NTSClient");*/
 
 	folderLen = strlen(stats_ntsdumpdir);
 	folder = (char*)malloc(folderLen + 1);
@@ -2135,7 +2164,7 @@ nts_build_host_db_path(const char* host, char** outPath)
 		DWORD err = GetLastError();
 		if (err != ERROR_ALREADY_EXISTS) {
 			msyslog(LOG_ERR,
-				"nts_build_host_db_path: CreateDirectoryA failed: %lu",
+				"nts_build_session_dump_path: CreateDirectoryA failed: %lu",
 				(unsigned long)err);
 			free(folder);
 			return 0;
@@ -2147,7 +2176,7 @@ nts_build_host_db_path(const char* host, char** outPath)
 		return 0;
 	}
 
-	outLen = strlen(folder) + 1 + strlen(safeHost) + strlen(".sqlite");
+	outLen = strlen(folder) + 1 + strlen(safeHost) + strlen(ext);
 	path = (char*)malloc(outLen + 1);
 	if (path == NULL) {
 		free(safeHost);
@@ -2158,7 +2187,7 @@ nts_build_host_db_path(const char* host, char** outPath)
 	strcpy(path, folder);
 	strcat(path, "\\");
 	strcat(path, safeHost);
-	strcat(path, ".sqlite");
+	strcat(path, ext);
 
 	free(safeHost);
 	free(folder);
@@ -2905,434 +2934,286 @@ fail:
 	return 0;
 }
 int
-nts_save_session_to_sqlite(const NtsStoredSession* session, char** outDbPath)
+nts_save_session_to_dump(const NtsStoredSession* session, char** outPath)
 {
-	sqlite3* db;
-	int rc;
-	int ok;
-	sqlite3_stmt* stmt;
+	FILE* f;
 	time_t now;
+	time_t createdAt;
 	size_t i;
-	char* dbPath;
-	for (i = 0; i < session->cookieCount; i++) {
-		if (session->cookies[i] == NULL || session->cookieLens[i] == 0) {
-			msyslog(LOG_ERR,
-				"nts_save_session_to_sqlite: empty cookie at index %lu",
-				(unsigned long)i);
-			return 0;
-		}
-	}
-	static const char* upsertSessionSql =
-		"INSERT INTO nts_sessions ("
-		"  host, ntp_server, ntp_port, aead_id, c2s_key, s2c_key, created_at, updated_at"
-		") VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-		"ON CONFLICT(host) DO UPDATE SET "
-		"  ntp_server=excluded.ntp_server,"
-		"  ntp_port=excluded.ntp_port,"
-		"  aead_id=excluded.aead_id,"
-		"  c2s_key=excluded.c2s_key,"
-		"  s2c_key=excluded.s2c_key,"
-		"  updated_at=excluded.updated_at;";
+	char* finalPath;
+	char* tempPath;
+	char* c2sHex;
+	char* s2cHex;
+	int ok;
 
-	static const char* deleteCookiesSql =
-		"DELETE FROM nts_cookies WHERE host = ?;";
-
-	static const char* insertCookieSql =
-		"INSERT INTO nts_cookies (host, cookie_index, cookie) VALUES (?, ?, ?);";
-
-	if (outDbPath != NULL)
-		*outDbPath = NULL;
+	if (outPath != NULL)
+		*outPath = NULL;
 
 	if (session == NULL) {
 		msyslog(LOG_ERR,
-			"nts_save_session_to_sqlite: session is NULL");
+			"nts_save_session_to_dump: session is NULL");
 		return 0;
 	}
 
 	if (session->host == NULL || session->host[0] == '\0') {
 		msyslog(LOG_ERR,
-			"nts_save_session_to_sqlite: host is empty");
+			"nts_save_session_to_dump: host is empty");
 		return 0;
 	}
 
 	if (session->ntpServer == NULL || session->ntpServer[0] == '\0') {
 		msyslog(LOG_ERR,
-			"nts_save_session_to_sqlite: ntpServer is empty");
+			"nts_save_session_to_dump: ntpServer is empty");
 		return 0;
 	}
 
 	if (session->c2sKey == NULL || session->c2sKeyLen == 0 ||
 		session->s2cKey == NULL || session->s2cKeyLen == 0) {
 		msyslog(LOG_ERR,
-			"nts_save_session_to_sqlite: derived keys are empty");
+			"nts_save_session_to_dump: derived keys are empty");
 		return 0;
 	}
 
 	if (session->cookies == NULL || session->cookieLens == NULL ||
 		session->cookieCount == 0) {
 		msyslog(LOG_ERR,
-			"nts_save_session_to_sqlite: no cookies to save");
+			"nts_save_session_to_dump: no cookies to save");
 		return 0;
 	}
 
-	if (!nts_build_host_db_path(session->host, &dbPath))
-		return 0;
-
-	if (outDbPath != NULL)
-		*outDbPath = dbPath;
-
-	db = NULL;
-	rc = sqlite3_open(dbPath, &db);
-	if (rc != SQLITE_OK) {
-		msyslog(LOG_ERR,
-			"nts_save_session_to_sqlite: sqlite3_open failed: %s",
-			nts_sqlite_err(db));
-		if (db != NULL)
-			sqlite3_close(db);
-		if (outDbPath == NULL) {
-			free(dbPath);
+	for (i = 0; i < session->cookieCount; i++) {
+		if (session->cookies[i] == NULL || session->cookieLens[i] == 0) {
+			msyslog(LOG_ERR,
+				"nts_save_session_to_dump: empty cookie at index %lu",
+				(unsigned long)i);
+			return 0;
 		}
-		return 0;
 	}
 
-	if (!nts_ensure_schema(db)) {
-		sqlite3_close(db);
-		if (outDbPath == NULL) {
-			free(dbPath);
-		}
-		return 0;
-	}
-
-	if (!nts_exec_sql(db, "BEGIN IMMEDIATE TRANSACTION;")) {
-		sqlite3_close(db);
-		if (outDbPath == NULL) {
-			free(dbPath);
-		}
-		return 0;
-	}
-
+	finalPath = NULL;
+	tempPath = NULL;
+	c2sHex = NULL;
+	s2cHex = NULL;
+	f = NULL;
 	ok = 0;
-	stmt = NULL;
 
-	do {
-		now = time(NULL);
+	if (!nts_build_session_dump_path(session->host, ".nts", &finalPath))
+		goto done;
+	if (!nts_build_session_dump_path(session->host, ".tmp", &tempPath))
+		goto done;
 
-		rc = sqlite3_prepare_v2(db, upsertSessionSql, -1, &stmt, NULL);
-		if (rc != SQLITE_OK) {
-			msyslog(LOG_ERR,
-				"nts_save_session_to_sqlite: prepare session failed: %s",
-				nts_sqlite_err(db));
-			break;
+	c2sHex = nts_bytes_to_hex_compact(session->c2sKey, session->c2sKeyLen);
+	s2cHex = nts_bytes_to_hex_compact(session->s2cKey, session->s2cKeyLen);
+	if (c2sHex == NULL || s2cHex == NULL)
+		goto done;
+
+	f = fopen(tempPath, "wb");
+	if (f == NULL) {
+		msyslog(LOG_ERR,
+			"nts_save_session_to_dump: failed to open %s",
+			tempPath);
+		goto done;
+	}
+
+	now = time(NULL);
+	createdAt = session->createdAt > 0 ? session->createdAt : now;
+
+	if (fprintf(f, "%s\n%s\n%lld %lld\n%s %u\n%u\n%s\n%s\n%lu\n",
+		NTS_DUMP_IDENTIFIER,
+		session->host,
+		(long long)createdAt,
+		(long long)now,
+		session->ntpServer,
+		(unsigned)session->ntpPort,
+		(unsigned)session->aeadId,
+		c2sHex,
+		s2cHex,
+		(unsigned long)session->cookieCount) < 0)
+		goto done;
+
+	for (i = 0; i < session->cookieCount; i++) {
+		char* cookieHex = nts_bytes_to_hex_compact(session->cookies[i],
+			session->cookieLens[i]);
+		if (cookieHex == NULL ||
+			fprintf(f, "%s\n", cookieHex) < 0) {
+			free(cookieHex);
+			goto done;
 		}
+		free(cookieHex);
+	}
 
-		sqlite3_bind_text(stmt, 1, session->host, -1, SQLITE_TRANSIENT);
-		sqlite3_bind_text(stmt, 2, session->ntpServer, -1, SQLITE_TRANSIENT);
-		sqlite3_bind_int(stmt, 3, (int)session->ntpPort);
-		sqlite3_bind_int(stmt, 4, (int)session->aeadId);
-		sqlite3_bind_blob(stmt, 5,
-			session->c2sKey,
-			(int)session->c2sKeyLen,
-			SQLITE_TRANSIENT);
-		sqlite3_bind_blob(stmt, 6,
-			session->s2cKey,
-			(int)session->s2cKeyLen,
-			SQLITE_TRANSIENT);
-		sqlite3_bind_int64(stmt, 7, (sqlite3_int64)now);
-		sqlite3_bind_int64(stmt, 8, (sqlite3_int64)now);
+	if (fclose(f) != 0) {
+		f = NULL;
+		goto done;
+	}
+	f = NULL;
 
-		rc = sqlite3_step(stmt);
-		sqlite3_finalize(stmt);
-		stmt = NULL;
+	if (!MoveFileExA(tempPath,
+		finalPath,
+		MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
+		msyslog(LOG_ERR,
+			"nts_save_session_to_dump: MoveFileExA failed: %lu",
+			(unsigned long)GetLastError());
+		goto done;
+	}
 
-		if (rc != SQLITE_DONE) {
-			msyslog(LOG_ERR,
-				"nts_save_session_to_sqlite: step session failed: %s",
-				nts_sqlite_err(db));
-			break;
-		}
+	ok = 1;
+	if (outPath != NULL) {
+		*outPath = finalPath;
+		finalPath = NULL;
+	}
 
-		rc = sqlite3_prepare_v2(db, deleteCookiesSql, -1, &stmt, NULL);
-		if (rc != SQLITE_OK) {
-			msyslog(LOG_ERR,
-				"nts_save_session_to_sqlite: prepare delete cookies failed: %s",
-				nts_sqlite_err(db));
-			break;
-		}
-
-		sqlite3_bind_text(stmt, 1, session->host, -1, SQLITE_TRANSIENT);
-
-		rc = sqlite3_step(stmt);
-		sqlite3_finalize(stmt);
-		stmt = NULL;
-
-		if (rc != SQLITE_DONE) {
-			msyslog(LOG_ERR,
-				"nts_save_session_to_sqlite: step delete cookies failed: %s",
-				nts_sqlite_err(db));
-			break;
-		}
-
-		rc = sqlite3_prepare_v2(db, insertCookieSql, -1, &stmt, NULL);
-		if (rc != SQLITE_OK) {
-			msyslog(LOG_ERR,
-				"nts_save_session_to_sqlite: prepare insert cookie failed: %s",
-				nts_sqlite_err(db));
-			break;
-		}
-
-		for (i = 0; i < session->cookieCount; i++) {
-			sqlite3_reset(stmt);
-			sqlite3_clear_bindings(stmt);
-
-			sqlite3_bind_text(stmt, 1, session->host, -1, SQLITE_TRANSIENT);
-			sqlite3_bind_int(stmt, 2, (int)i);
-			sqlite3_bind_blob(stmt, 3,
-				session->cookies[i],
-				(int)session->cookieLens[i],
-				SQLITE_TRANSIENT);
-
-			rc = sqlite3_step(stmt);
-			if (rc != SQLITE_DONE) {
-				msyslog(LOG_ERR,
-					"nts_save_session_to_sqlite: step insert cookie failed at index %lu: %s",
-					(unsigned long)i,
-					nts_sqlite_err(db));
-				break;
-			}
-		}
-
-		sqlite3_finalize(stmt);
-		stmt = NULL;
-
-		if (rc != SQLITE_DONE)
-			break;
-
-		if (!nts_exec_sql(db, "COMMIT;"))
-			break;
-
-		ok = 1;
-	} while (0);
-
-	if (!ok)
-		nts_exec_sql(db, "ROLLBACK;");
-
-	if (stmt != NULL)
-		sqlite3_finalize(stmt);
-
-	sqlite3_close(db);
-
-	if (!ok && outDbPath == NULL)
-		free(dbPath);
-
+done:
+	if (f != NULL)
+		fclose(f);
+	if (!ok && tempPath != NULL)
+		DeleteFileA(tempPath);
+	free(tempPath);
+	free(finalPath);
+	free(c2sHex);
+	free(s2cHex);
 	return ok;
 }
+
 int
-nts_load_session_from_sqlite(const char* host,NtsStoredSession* out,char** outDbPath)
+nts_load_session_from_dump(const char* host, NtsStoredSession* out, char** outPath)
 {
-	sqlite3* db;
-	sqlite3_stmt* stmt;
-	int rc;
-	char* dbPath;
+	FILE* f;
+	char* dumpPath;
+	char line[2048];
+	unsigned long cookieCount;
+	unsigned long i;
+	long long createdAt;
+	long long updatedAt;
+	unsigned ntpPort;
+	unsigned aeadId;
 
-	static const char* selectSessionSql =
-		"SELECT ntp_server, ntp_port, aead_id, c2s_key, s2c_key, created_at, updated_at "
-		"FROM nts_sessions WHERE host = ?;";
-
-	static const char* selectCookiesSql =
-		"SELECT cookie FROM nts_cookies "
-		"WHERE host = ? "
-		"ORDER BY cookie_index;";
-
-	if (outDbPath != NULL)
-		*outDbPath = NULL;
+	if (outPath != NULL)
+		*outPath = NULL;
 
 	if (host == NULL || *host == '\0') {
 		msyslog(LOG_ERR,
-			"nts_load_session_from_sqlite: host is empty");
+			"nts_load_session_from_dump: host is empty");
 		return 0;
 	}
 
 	if (out == NULL) {
 		msyslog(LOG_ERR,
-			"nts_load_session_from_sqlite: out is NULL");
+			"nts_load_session_from_dump: out is NULL");
 		return 0;
 	}
 
-	if (!nts_build_host_db_path(host, &dbPath))
+	if (!nts_build_session_dump_path(host, ".nts", &dumpPath))
 		return 0;
 
-	if (outDbPath != NULL)
-		*outDbPath = dbPath;
+	if (outPath != NULL)
+		*outPath = dumpPath;
 
-	db = NULL;
-	rc = sqlite3_open(dbPath, &db);
-	if (rc != SQLITE_OK) {
-		msyslog(LOG_ERR,
-			"nts_load_session_from_sqlite: sqlite3_open failed: %s",
-			nts_sqlite_err(db));
-		if (db != NULL)
-			sqlite3_close(db);
-		if (outDbPath == NULL)
-			free(dbPath);
-		return 0;
-	}
-
-	if (!nts_ensure_schema(db)) {
-		sqlite3_close(db);
-		if (outDbPath == NULL)
-			free(dbPath);
+	f = fopen(dumpPath, "rb");
+	if (f == NULL) {
+		if (outPath == NULL)
+			free(dumpPath);
 		return 0;
 	}
 
 	nts_stored_session_free(out);
 	nts_stored_session_init(out);
 
-	if (!nts_str_set(&out->host, host)) {
-		sqlite3_close(db);
-		if (outDbPath == NULL)
-			free(dbPath);
-		return 0;
+	if (!fgets(line, sizeof(line), f))
+		goto fail;
+	nts_trim_line(line);
+	if (strcmp(line, NTS_DUMP_IDENTIFIER) != 0)
+		goto fail;
+
+	if (!fgets(line, sizeof(line), f))
+		goto fail;
+	nts_trim_line(line);
+	if (strcmp(line, host) != 0)
+		goto fail;
+	if (!nts_str_set(&out->host, line))
+		goto fail;
+
+	if (!fgets(line, sizeof(line), f))
+		goto fail;
+	nts_trim_line(line);
+	if (sscanf(line, "%lld %lld", &createdAt, &updatedAt) != 2)
+		goto fail;
+	out->createdAt = (time_t)createdAt;
+	out->updatedAt = (time_t)updatedAt;
+
+	if (!fgets(line, sizeof(line), f))
+		goto fail;
+	nts_trim_line(line);
+	{
+		char server[1024];
+		if (sscanf(line, "%1023s %u", server, &ntpPort) != 2)
+			goto fail;
+		if (!nts_str_set(&out->ntpServer, server))
+			goto fail;
+		out->ntpPort = (uint16_t)ntpPort;
 	}
 
-	stmt = NULL;
-	rc = sqlite3_prepare_v2(db, selectSessionSql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK) {
-		msyslog(LOG_ERR,
-			"nts_load_session_from_sqlite: prepare select session failed: %s",
-			nts_sqlite_err(db));
-		sqlite3_close(db);
-		if (outDbPath == NULL)
-			free(dbPath);
-		return 0;
-	}
+	if (!fgets(line, sizeof(line), f))
+		goto fail;
+	nts_trim_line(line);
+	if (sscanf(line, "%u", &aeadId) != 1)
+		goto fail;
+	out->aeadId = (uint16_t)aeadId;
 
-	sqlite3_bind_text(stmt, 1, host, -1, SQLITE_TRANSIENT);
+	if (!fgets(line, sizeof(line), f))
+		goto fail;
+	nts_trim_line(line);
+	if (!nts_hex_to_buf(line, &out->c2sKey, &out->c2sKeyLen, &out->c2sKeyCap))
+		goto fail;
 
-	rc = sqlite3_step(stmt);
-	if (rc == SQLITE_ROW) {
-		const unsigned char* ntpServer;
-		const void* c2sBlob;
-		int c2sLen;
-		const void* s2cBlob;
-		int s2cLen;
+	if (!fgets(line, sizeof(line), f))
+		goto fail;
+	nts_trim_line(line);
+	if (!nts_hex_to_buf(line, &out->s2cKey, &out->s2cKeyLen, &out->s2cKeyCap))
+		goto fail;
 
-		ntpServer = sqlite3_column_text(stmt, 0);
-		if (!nts_str_set(&out->ntpServer,
-			(ntpServer != NULL)
-			? (const char*)ntpServer
-			: "")) {
-			sqlite3_finalize(stmt);
-			sqlite3_close(db);
-			if (outDbPath == NULL)
-				free(dbPath);
-			return 0;
+	if (!fgets(line, sizeof(line), f))
+		goto fail;
+	nts_trim_line(line);
+	if (sscanf(line, "%lu", &cookieCount) != 1 || cookieCount == 0)
+		goto fail;
+
+	for (i = 0; i < cookieCount; i++) {
+		uint8_t* cookie;
+		size_t cookieLen;
+		size_t cookieCap;
+
+		if (!fgets(line, sizeof(line), f))
+			goto fail;
+		nts_trim_line(line);
+
+		cookie = NULL;
+		cookieLen = 0;
+		cookieCap = 0;
+		if (!nts_hex_to_buf(line, &cookie, &cookieLen, &cookieCap))
+			goto fail;
+		if (!nts_cookie_array_add(&out->cookies,
+			&out->cookieLens,
+			&out->cookieCount,
+			&out->cookieCap,
+			cookie,
+			cookieLen)) {
+			free(cookie);
+			goto fail;
 		}
-
-		out->ntpPort = (uint16_t)sqlite3_column_int(stmt, 1);
-		out->aeadId = (uint16_t)sqlite3_column_int(stmt, 2);
-
-		c2sBlob = sqlite3_column_blob(stmt, 3);
-		c2sLen = sqlite3_column_bytes(stmt, 3);
-		if (c2sBlob != NULL && c2sLen > 0) {
-			if (!nts_buf_set(&out->c2sKey,
-				&out->c2sKeyLen,
-				&out->c2sKeyCap,
-				(const uint8_t*)c2sBlob,
-				(size_t)c2sLen)) {
-				sqlite3_finalize(stmt);
-				sqlite3_close(db);
-				if (outDbPath == NULL)
-					free(dbPath);
-				return 0;
-			}
-		}
-
-		s2cBlob = sqlite3_column_blob(stmt, 4);
-		s2cLen = sqlite3_column_bytes(stmt, 4);
-		if (s2cBlob != NULL && s2cLen > 0) {
-			if (!nts_buf_set(&out->s2cKey,
-				&out->s2cKeyLen,
-				&out->s2cKeyCap,
-				(const uint8_t*)s2cBlob,
-				(size_t)s2cLen)) {
-				sqlite3_finalize(stmt);
-				sqlite3_close(db);
-				if (outDbPath == NULL)
-					free(dbPath);
-				return 0;
-			}
-		}
-		out->createdAt = (time_t)sqlite3_column_int64(stmt, 5);
-		out->updatedAt = (time_t)sqlite3_column_int64(stmt, 6);
-	}
-	else {
-		sqlite3_finalize(stmt);
-		sqlite3_close(db);
-		if (outDbPath == NULL)
-			free(dbPath);
-		return 0;
+		free(cookie);
 	}
 
-	sqlite3_finalize(stmt);
-	stmt = NULL;
-
-	rc = sqlite3_prepare_v2(db, selectCookiesSql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK) {
-		msyslog(LOG_ERR,
-			"nts_load_session_from_sqlite: prepare select cookies failed: %s",
-			nts_sqlite_err(db));
-		sqlite3_close(db);
-		if (outDbPath == NULL)
-			free(dbPath);
-		return 0;
-	}
-
-	sqlite3_bind_text(stmt, 1, host, -1, SQLITE_TRANSIENT);
-
-	while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-		const void* blob;
-		int blobLen;
-
-		blob = sqlite3_column_blob(stmt, 0);
-		blobLen = sqlite3_column_bytes(stmt, 0);
-
-		if (blob != NULL && blobLen > 0) {
-			if (!nts_cookie_array_add(&out->cookies,
-				&out->cookieLens,
-				&out->cookieCount,
-				&out->cookieCap,
-				(const uint8_t*)blob,
-				(size_t)blobLen)) {
-				sqlite3_finalize(stmt);
-				sqlite3_close(db);
-				if (outDbPath == NULL)
-					free(dbPath);
-				return 0;
-			}
-		}
-	}
-
-	sqlite3_finalize(stmt);
-	sqlite3_close(db);
-
-	if (rc != SQLITE_DONE) {
-		msyslog(LOG_ERR,
-			"nts_load_session_from_sqlite: step select cookies failed");
-		if (outDbPath == NULL)
-			free(dbPath);
-		return 0;
-	}
-
-	if (out->cookieCount == 0) {
-		msyslog(LOG_ERR,
-			"nts_load_session_from_sqlite: no cookies found for host %s",
-			host);
-		if (outDbPath == NULL)
-			free(dbPath);
-		return 0;
-	}
-
+	fclose(f);
 	return 1;
+
+fail:
+	fclose(f);
+	nts_stored_session_free(out);
+	nts_stored_session_init(out);
+	if (outPath == NULL)
+		free(dumpPath);
+	return 0;
 }
 int
 nts_update_cookies_in_session(const NtsKeContext* ctx)
@@ -3357,9 +3238,9 @@ nts_update_cookies_in_session(const NtsKeContext* ctx)
 		goto done;
 	}
 
-	if (!nts_save_session_to_sqlite(&session, &dbPath)) {
+	if (!nts_save_session_to_dump(&session, &dbPath)) {
 		msyslog(LOG_ERR,
-			"nts_update_cookies_in_session: failed to save refreshed cookies to SQLite");
+			"nts_update_cookies_in_session: failed to save refreshed cookies to dump");
 		goto done;
 	}
 
@@ -4971,71 +4852,28 @@ void nts_clear_runtime_session(NtsKeContext* ctx)
 	ctx->negotiatedAead = 0;
 }
 
-int nts_delete_session_from_sqlite(const char* host)
+int nts_delete_session_from_dump(const char* host)
 {
-	char* dbPath;
-	sqlite3* db;
-	sqlite3_stmt* stmt;
-	int rc;
-	int ok;
-	static const char* sql =
-		"DELETE FROM nts_sessions WHERE host = ?;";
+	char* dumpPath;
 
 	if (host == NULL || *host == '\0')
 		return 0;
 
-	dbPath = NULL;
-	db = NULL;
-	stmt = NULL;
-	ok = 0;
-
-	if (!nts_build_host_db_path(host, &dbPath))
+	dumpPath = NULL;
+	if (!nts_build_session_dump_path(host, ".nts", &dumpPath))
 		return 0;
 
-	rc = sqlite3_open(dbPath, &db);
-	if (rc != SQLITE_OK) {
-		msyslog(LOG_ERR,
-			"nts_delete_session_from_sqlite: sqlite3_open failed: %s",
-			nts_sqlite_err(db));
-		if (db != NULL)
-			sqlite3_close(db);
-		free(dbPath);
-		return 0;
+	if (DeleteFileA(dumpPath) ||
+		GetLastError() == ERROR_FILE_NOT_FOUND) {
+		free(dumpPath);
+		return 1;
 	}
 
-	if (!nts_ensure_schema(db)) {
-		sqlite3_close(db);
-		free(dbPath);
-		return 0;
-	}
-
-	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK) {
-		msyslog(LOG_ERR,
-			"nts_delete_session_from_sqlite: prepare failed: %s",
-			nts_sqlite_err(db));
-		goto done;
-	}
-
-	sqlite3_bind_text(stmt, 1, host, -1, SQLITE_TRANSIENT);
-
-	rc = sqlite3_step(stmt);
-	if (rc != SQLITE_DONE) {
-		msyslog(LOG_ERR,
-			"nts_delete_session_from_sqlite: step failed: %s",
-			nts_sqlite_err(db));
-		goto done;
-	}
-
-	ok = 1;
-
-done:
-	if (stmt != NULL)
-		sqlite3_finalize(stmt);
-	if (db != NULL)
-		sqlite3_close(db);
-	free(dbPath);
-	return ok;
+	msyslog(LOG_ERR,
+		"nts_delete_session_from_dump: DeleteFileA failed: %lu",
+		(unsigned long)GetLastError());
+	free(dumpPath);
+	return 0;
 }
 
 NtsServiceSyncState nts_classify_sync_stability(const NtpSyncOutcome* o)
@@ -5108,7 +4946,7 @@ int nts_run_peer_sync(struct peer* peer)
 	ntp_sync_outcome_init(&freshOutcome);
 	nts_stored_session_init(&updated);
 
-	haveStoredSession = nts_load_session_from_sqlite(ctx->sessionCacheKey,
+	haveStoredSession = nts_load_session_from_dump(ctx->sessionCacheKey,
 		&loaded,
 		&dbPath);
 
@@ -5133,9 +4971,9 @@ int nts_run_peer_sync(struct peer* peer)
 		if (cachedOutcome.result == NTP_SYNC_RESULT_SUCCESS) {
 			if (nts_make_stored_session_from_runtime(ctx, &updated)) {
 				char* savedDbPath = NULL;
-				if (!nts_save_session_to_sqlite(&updated, &savedDbPath)) {
+				if (!nts_save_session_to_dump(&updated, &savedDbPath)) {
 					msyslog(LOG_WARNING,
-						"nts_run_peer_sync: authenticated NTP succeeded, but updating SQLite session failed");
+						"nts_run_peer_sync: authenticated NTP succeeded, but updating dump session failed");
 				}
 				free(savedDbPath);
 			}
@@ -5156,7 +4994,7 @@ int nts_run_peer_sync(struct peer* peer)
 			msyslog(LOG_WARNING,
 				"nts_run_peer_sync: cached session appears stale or invalid; discarding and renegotiating");
 
-			nts_delete_session_from_sqlite(ctx->sessionCacheKey);
+			nts_delete_session_from_dump(ctx->sessionCacheKey);
 			nts_clear_runtime_session(ctx);
 			(void)nts_set_peer_identity(peer, ctx);
 		}
@@ -5171,7 +5009,7 @@ int nts_run_peer_sync(struct peer* peer)
 		DPRINTF(3, (
 			"nts_run_peer_sync: cached NTS session is too old; forcing fresh NTS-KE\n"));
 
-		nts_delete_session_from_sqlite(ctx->sessionCacheKey);
+		nts_delete_session_from_dump(ctx->sessionCacheKey);
 		nts_clear_runtime_session(ctx);
 		(void)nts_set_peer_identity(peer, ctx);
 	}
@@ -5190,9 +5028,9 @@ int nts_run_peer_sync(struct peer* peer)
 	nts_stored_session_init(&updated);
 	if (nts_make_stored_session_from_runtime(ctx, &updated)) {
 		char* savedDbPath = NULL;
-		if (!nts_save_session_to_sqlite(&updated, &savedDbPath)) {
+		if (!nts_save_session_to_dump(&updated, &savedDbPath)) {
 			msyslog(LOG_WARNING,
-				"nts_run_peer_sync: fresh NTS-KE succeeded, but saving SQLite session failed");
+				"nts_run_peer_sync: fresh NTS-KE succeeded, but saving dump session failed");
 		}
 		free(savedDbPath);
 	}
@@ -5209,9 +5047,9 @@ int nts_run_peer_sync(struct peer* peer)
 	nts_stored_session_init(&updated);
 	if (nts_make_stored_session_from_runtime(ctx, &updated)) {
 		char* savedDbPath = NULL;
-		if (!nts_save_session_to_sqlite(&updated, &savedDbPath)) {
+		if (!nts_save_session_to_dump(&updated, &savedDbPath)) {
 			msyslog(LOG_WARNING,
-				"nts_run_peer_sync: authenticated NTP succeeded, but updating SQLite session failed");
+				"nts_run_peer_sync: authenticated NTP succeeded, but updating dump session failed");
 		}
 		free(savedDbPath);
 	}
