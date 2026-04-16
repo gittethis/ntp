@@ -2148,6 +2148,11 @@ nts_build_session_dump_path(const char* host, const char* ext, char** outPath)
 
 	if (host == NULL || ext == NULL || outPath == NULL)
 		return 0;
+	if (stats_ntsdumpdir == NULL || stats_ntsdumpdir[0] == '\0') {
+		msyslog(LOG_ERR,
+			"nts_build_session_dump_path: ntsdumpdir is not configured");
+		return 0;
+	}
 
 	*outPath = NULL;
 	safeHost = NULL;

@@ -112,8 +112,12 @@ getCmdOpts(
 	if (HAVE_OPT( STATSDIR ))
 	    stats_config(STATS_STATSDIR, OPT_ARG( STATSDIR ), 1);
 
-	if (HAVE_OPT(NTSDUMPDIR))
-		stats_config(STATS_NTSDUMPDIR, OPT_ARG( NTSDUMPDIR ), 1);
+	/*
+	 * ntsdumpdir is supported in ntp.conf, but the generated AutoOpts
+	 * table in ntpd-opts.c/ntpd-opts.h was not regenerated for a real
+	 * command-line option descriptor. Touching HAVE_OPT/OPT_ARG here
+	 * indexes past the end of the option table and can crash in startup.
+	 */
 
 
 	if (HAVE_OPT( TRUSTEDKEY )) {

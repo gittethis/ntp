@@ -212,7 +212,16 @@
     <ClCompile Include="..\..\ntpd\ntservice.c" />
     <ClCompile Include="..\..\ntpd\nt_clockstuff.c" />
     <ClCompile Include="..\..\ntpd\nt_ppsimpl.c" />
-    <ClCompile Include="ntp_nts.c" />
+    <ClCompile Include="ntp_nts.c">
+      <Optimization Condition="'$(Configuration)'=='Release'">Disabled</Optimization>
+      <WholeProgramOptimization Condition="'$(Configuration)'=='Release'">false</WholeProgramOptimization>
+      <InlineFunctionExpansion Condition="'$(Configuration)'=='Release'">Disabled</InlineFunctionExpansion>
+      <FavorSizeOrSpeed Condition="'$(Configuration)'=='Release'">Neither</FavorSizeOrSpeed>
+      <Optimization Condition="'$(Configuration)'=='ReleaseXP'">Disabled</Optimization>
+      <WholeProgramOptimization Condition="'$(Configuration)'=='ReleaseXP'">false</WholeProgramOptimization>
+      <InlineFunctionExpansion Condition="'$(Configuration)'=='ReleaseXP'">Disabled</InlineFunctionExpansion>
+      <FavorSizeOrSpeed Condition="'$(Configuration)'=='ReleaseXP'">Neither</FavorSizeOrSpeed>
+    </ClCompile>
     <ClCompile Include="version.c" />
     <ClInclude Include="ntp_nts.h" />
     <ClInclude Include="sqlite3.h" />
